@@ -59,6 +59,9 @@ class obs_eq:
         df = self.df.copy()
 
         kGM_TTF = df.factor.values*(df.term1.values-df.term2.values)
+
+        shap = 
+
         # print(df)
         k_hat = np.vstack(df['gaia2star'].values + kGM_TTF)
 
