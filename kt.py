@@ -46,6 +46,7 @@ class obs_eq:
 
     def setup(self):
 
+        self.plapos(2.451545E+06,10)
         self.set_kt()
 
         part = ['']
@@ -72,14 +73,11 @@ class obs_eq:
         #
         # self.k_hat = self.properties['gaia2star'] + kGM_TTF
 
-    def plapos(self,jd0, planet):
-
-        # open the ephemeris file
-        peph = CalcephBin.open(kernels)
+    def plapos(self,jd0, target,center=12):
 
         # perform the computation
-        PV = peph.compute_unit(jd0, 0E0, NaifId.EARTH, NaifId.SUN,
-                               Constants.UNIT_AU + Constants.UNIT_DAY + Constants.USE_NAIFID)
+        PV = peph.compute_unit(jd0, 0, target, center,Constants.UNIT_KM + Constants.UNIT_SEC)
+        print('PV',PV)
 
     def proj(self, k_hat):
 
@@ -127,7 +125,10 @@ def read_parse(infil):
 
 if __name__ == '__main__':
 
-    infil = 'tmp/input.in'
+    infil = 'auxdir/input.in'
+
+    # open the ephemeris file
+    peph = CalcephBin.open("auxdir/inpop17a_TDB_m100_p100_tt.dat")
 
     df = read_parse(infil)
     stars = [star(x,df.loc[df['star_id']==x]) for x in df.star_id.unique()]
