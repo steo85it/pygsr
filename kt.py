@@ -13,7 +13,7 @@ warnings.filterwarnings("ignore", category=RuntimeWarning)
 import numpy as np
 import pandas as pd
 from calcephpy import *
-
+from sklearn import preprocessing as prp
 # import time
 # from scipy import interpolate
 # import pickle
@@ -60,14 +60,36 @@ class obs_eq:
 
         kGM_TTF = df.factor.values*(df.term1.values-df.term2.values)
 
-        # shap =
+        ppn_gamma = 1
 
-        # print(df)
-        k_hat = np.vstack(df['gaia2star'].values + kGM_TTF)
+        NAB = np.vstack(df.gaia2star.values)
+        rAB = np.vstack(df.rstarUpd.values)
+        RAB = rAB*NAB
+        # rAB = np.linalg.norm(RAB,axis=1)
 
+        epo = df.gtime.values
+        RP = np.transpose(self.plapos(epo,11)[:3])
+
+        RPB = RP - np.vstack(df.gaiapos.values)
+        rPB = np.linalg.norm(RPB)
+        NPB = RPB / rPB
+
+        RA = RAB + np.vstack(df.gaiapos.values) # temporary, should be input
+        RPA = RP - RA
+        rPA = np.linalg.norm(RPA)
+        NPA = RPA / rPA
+
+        GM = peph.getconstant('GM_Sun')
+        clight = 299792458.
+
+        k_hat = NAB - np.dot( (ppn_gamma+1)*132712e15/(clight**2 * rPB) * (1+np.einsum('ik,jk->j', NPA, NPB))**(-1) , (rAB/rPA * NPB - (1+rPB/rPA)*NAB))
+
+        print('k_hat',(k_hat-NAB))
+        k_hat_b = np.vstack(df['gaia2star'].values + kGM_TTF)
+        print('k_hat_b',k_hat_b-NAB)
         self.df.loc[:,'kt'] = self.proj(k_hat)
 
-        print(self.df)
+        # print(self.df)
         # kGM_TTF = np.vstack(df['kGM_TTF'].values)
 
         # print(self.properties)
@@ -79,8 +101,9 @@ class obs_eq:
     def plapos(self,jd0, target,center=12):
 
         # perform the computation
-        PV = peph.compute_unit(jd0, 0, target, center,Constants.UNIT_KM + Constants.UNIT_SEC)
-        print('PV',PV)
+        PV = peph.compute_unit(np.floor(jd0), jd0 - np.floor(jd0), target, center,Constants.UNIT_KM + Constants.UNIT_SEC)
+        # print('PV',PV)
+        return PV
 
     def proj(self, k_hat):
 
