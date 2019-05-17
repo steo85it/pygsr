@@ -155,9 +155,8 @@ class obs_eq:
         
         
         #Compute the SRS attitude matrix
-        A = np.array([[],
-                      [],
-                      []])
+        #TODO: define the Euler angles in the Data Model and substitute a,b,c with their values
+        A = eulerAnglesToRotationMatrix([a,b,c])
         
         #Compute the AL observable (phi_calc)
         E = 
