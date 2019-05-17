@@ -17,6 +17,8 @@ from astropy.coordinates import SkyCoord
 # from astropy.constants import c as clight
 from astropy import constants as const
 
+from gsropt import unix, projv
+
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 import numpy as np
 import pandas as pd
@@ -60,20 +62,46 @@ def normalize(param, df):
 
 # Calculates Rotation Matrix given euler angles.
 def eulerAnglesToRotationMatrix(theta) :
-    R_x = np.array([[1,         0,                  0                   ],
-                    [0,         math.cos(theta[0]), -math.sin(theta[0]) ],
-                    [0,         math.sin(theta[0]), math.cos(theta[0])  ]
-                    ])
-    R_y = np.array([[math.cos(theta[1]),    0,      math.sin(theta[1])  ],
-                    [0,                     1,      0                   ],
-                    [-math.sin(theta[1]),   0,      math.cos(theta[1])  ]
-                    ])
-    R_z = np.array([[math.cos(theta[2]),    -math.sin(theta[2]),    0],
-                    [math.sin(theta[2]),    math.cos(theta[2]),     0],
-                    [0,                     0,                      1]
-                    ])
-    R = np.dot(R_z, np.dot( R_y, R_x ))
-    return R
+
+    # Tested for one single row of theta=[[1,0,0]], gives the same result
+    # thetab = theta[0,:]
+    # R_x = np.array([[1,         0,                  0                   ],
+    #                 [0,         np.cos(thetab[0]), -np.sin(thetab[0]) ],
+    #                 [0,         np.sin(thetab[0]), np.cos(thetab[0])  ]
+    #                 ])
+    # R_y = np.array([[np.cos(thetab[1]),    0,      np.sin(thetab[1])  ],
+    #                 [0,                     1,      0                   ],
+    #                 [-np.sin(thetab[1]),   0,      np.cos(thetab[1])  ]
+    #                 ])
+    # R_z = np.array([[np.cos(thetab[2]),    -np.sin(thetab[2]),    0],
+    #                 [np.sin(thetab[2]),    np.cos(thetab[2]),     0],
+    #                 [0,                     0,                      1]
+    #                 ])
+    # R = np.dot(R_z, np.dot( R_y, R_x ))
+    # print(R)
+    
+    nrows = theta.shape[0]
+
+    alpha = theta[:,0]
+    M1 = np.reshape(np.hstack([np.column_stack((np.ones(nrows), np.zeros(nrows), np.zeros(nrows))),
+                               np.column_stack((np.zeros(nrows), np.cos(alpha), -np.sin(alpha))),
+                               np.column_stack((np.zeros(nrows), np.sin(alpha), np.cos(alpha)))]), (-1, 3, 3))
+
+    alpha = theta[:,1]
+    M2 = np.reshape(np.hstack([np.column_stack((np.cos(alpha), -np.sin(alpha), np.zeros(nrows))),
+                               np.column_stack((np.sin(alpha), np.cos(alpha), np.zeros(nrows))),
+                               np.column_stack((np.zeros(nrows), np.zeros(nrows), np.ones(nrows)))]), (-1, 3, 3))
+
+    alpha = theta[:,2]
+    M3 = np.reshape(np.hstack([np.column_stack((np.cos(alpha), -np.sin(alpha), np.zeros(nrows))),
+                               np.column_stack((np.sin(alpha), np.cos(alpha), np.zeros(nrows))),
+                               np.column_stack((np.zeros(nrows), np.zeros(nrows), np.ones(nrows)))]), (-1, 3, 3))
+    #tsipm = 0  # mtimesx(M1,mtimesx(M2,M3));
+
+    # Combine rotations
+    tmp = np.einsum('ijk,ikl->ijl', M2, M3)
+
+    return np.einsum('ijk,ikl->ijl', M1, tmp)
 
 class obs_eq:
 
@@ -136,31 +164,32 @@ class obs_eq:
 
         k_hat = NAB - np.dot( (ppn_gamma+1)*GM_sun/(const.c.value**2 * rPB) * (1+np.einsum('ik,jk->j', NPA, NPB))**(-1) , (rAB/rPA * NPB - (1+rPB/rPA)*NAB))
         print(k_hat)
- 
-        #Compute the metric components
-        h00 = (ppn_gamma+1)*GM_sun/(const.c.value**2)
-        #TODO
-        h01 = 0.0
-        h02 = 0.0
-        h03 = 0.0
-        
-        #Compute the local BCRS and the bootsed tetrads
-        l_bcrs = np.array([[h01, 1.0-h00/2, 0.0, 0.0],
-                            [h02, 0.0, 1.0-h00/2, 0.0],
-                            [h03, 0.0, 0.0, 1.0-h00/2]])
-        fact = (1.0+3*h00/2+beta_sq/2)
-        l_bst = l_lbcrs+np.array([[beta_x*fact, (beta_x**2)/2, beta_x*beta_y/2, beta_x*beta_z/2],
-                                   [beta_y*fact, beta_x*beta_y/2, (beta_y**2)/2, beta_y*beta_z/2],
-                                   [beta_z*fact, beta_x*beta_z/2, beta_y*beta_z/2, (beta_z**2)/2]])
-        
-        
-        #Compute the SRS attitude matrix
-        #TODO: define the Euler angles in the Data Model and substitute a,b,c with their values
-        A = eulerAnglesToRotationMatrix([a,b,c])
-        
-        #Compute the AL observable (phi_calc)
-        E = 
-        exit()
+
+        if False:
+            #Compute the metric components
+            h00 = (ppn_gamma+1)*GM_sun/(const.c.value**2)
+            #TODO
+            h01 = 0.0
+            h02 = 0.0
+            h03 = 0.0
+
+            #Compute the local BCRS and the bootsed tetrads
+            l_bcrs = np.array([[h01, 1.0-h00/2, 0.0, 0.0],
+                                [h02, 0.0, 1.0-h00/2, 0.0],
+                                [h03, 0.0, 0.0, 1.0-h00/2]])
+            fact = (1.0+3*h00/2+beta_sq/2)
+            l_bst = l_bcrs+np.array([[beta_x*fact, (beta_x**2)/2, beta_x*beta_y/2, beta_x*beta_z/2],
+                                       [beta_y*fact, beta_x*beta_y/2, (beta_y**2)/2, beta_y*beta_z/2],
+                                       [beta_z*fact, beta_x*beta_z/2, beta_y*beta_z/2, (beta_z**2)/2]])
+
+
+            #Compute the SRS attitude matrix
+            #TODO: define the Euler angles in the Data Model and substitute a,b,c with their values
+            A = eulerAnglesToRotationMatrix([a,b,c])
+
+            #Compute the AL observable (phi_calc)
+            E = 0
+        # exit()
         
         # self.df.loc[:,'kt'] = self.proj(k_hat)
 
@@ -232,7 +261,10 @@ def read_parse_b(infil,cols=[]):
 
 if __name__ == '__main__':
 
-    if True:
+    if projv == 'b':
+
+        tmp = eulerAnglesToRotationMatrix(np.array([[1,0,0]]))
+        print(tmp)
 
         infils = glob.glob('auxdir/plan_b/*.txt')
         print(infils)
@@ -245,7 +277,10 @@ if __name__ == '__main__':
         dfnam = ['cat','eph','obs','scan']
         dfs = []
         for f in infils:
-            dfs.append(read_parse_b(f, cols=cols[f.split('\\')[-1].split('.')[0]]))
+            if unix:
+                dfs.append(read_parse_b(f, cols=cols[f.split('/')[-1].split('.')[0]]))
+            else:
+                dfs.append(read_parse_b(f, cols=cols[f.split('\\')[-1].split('.')[0]]))
 
         dfs = dict(zip(dfnam, dfs))
 
@@ -265,6 +300,7 @@ if __name__ == '__main__':
         [s.set_obs_eq() for s in stars if len(s.eph_df > 0)]
 
     else:
+        from calcephpy import CalcephBin
 
         infil = 'auxdir/input.in'
 
