@@ -20,7 +20,7 @@ from astropy import constants as const
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 import numpy as np
 import pandas as pd
-from calcephpy import *
+#from calcephpy import *
 from sklearn import preprocessing as prp
 # import time
 # from scipy import interpolate
@@ -58,6 +58,22 @@ def normalize(param, df):
     norm = np.linalg.norm(tmp)
     return tmp/norm
 
+# Calculates Rotation Matrix given euler angles.
+def eulerAnglesToRotationMatrix(theta) :
+    R_x = np.array([[1,         0,                  0                   ],
+                    [0,         math.cos(theta[0]), -math.sin(theta[0]) ],
+                    [0,         math.sin(theta[0]), math.cos(theta[0])  ]
+                    ])
+    R_y = np.array([[math.cos(theta[1]),    0,      math.sin(theta[1])  ],
+                    [0,                     1,      0                   ],
+                    [-math.sin(theta[1]),   0,      math.cos(theta[1])  ]
+                    ])
+    R_z = np.array([[math.cos(theta[2]),    -math.sin(theta[2]),    0],
+                    [math.sin(theta[2]),    math.cos(theta[2]),     0],
+                    [0,                     0,                      1]
+                    ])
+    R = np.dot(R_z, np.dot( R_y, R_x ))
+    return R
 
 class obs_eq:
 
@@ -113,10 +129,40 @@ class obs_eq:
         rPA = norm('RPA',df)
 
         GM_sun = (const.G*const.M_sun).value
+        beta_sq = (df['Sat_vx']**2+df['Sat_vy']**2+df['Sat_vz']**2)/(((const.c).value)**2)
+        beta_x = df['Sat_vx']/((const.c).value)
+        beta_y = df['Sat_vy']/((const.c).value)
+        beta_z = df['Sat_vz']/((const.c).value)
 
         k_hat = NAB - np.dot( (ppn_gamma+1)*GM_sun/(const.c.value**2 * rPB) * (1+np.einsum('ik,jk->j', NPA, NPB))**(-1) , (rAB/rPA * NPB - (1+rPB/rPA)*NAB))
         print(k_hat)
-
+ 
+        #Compute the metric components
+        h00 = (ppn_gamma+1)*GM_sun/(const.c.value**2)
+        #TODO
+        h01 = 0.0
+        h02 = 0.0
+        h03 = 0.0
+        
+        #Compute the local BCRS and the bootsed tetrads
+        l_bcrs = np.array([[h01, 1.0-h00/2, 0.0, 0.0],
+                            [h02, 0.0, 1.0-h00/2, 0.0],
+                            [h03, 0.0, 0.0, 1.0-h00/2]])
+        fact = (1.0+3*h00/2+beta_sq/2)
+        l_bst = l_lbcrs+np.array([[beta_x*fact, (beta_x**2)/2, beta_x*beta_y/2, beta_x*beta_z/2],
+                                   [beta_y*fact, beta_x*beta_y/2, (beta_y**2)/2, beta_y*beta_z/2],
+                                   [beta_z*fact, beta_x*beta_z/2, beta_y*beta_z/2, (beta_z**2)/2]])
+        
+        
+        #Compute the SRS attitude matrix
+        A = np.array([[],
+                      [],
+                      []])
+        
+        #Compute the AL observable (phi_calc)
+        E = 
+        exit()
+        
         # self.df.loc[:,'kt'] = self.proj(k_hat)
 
         # print(self.df)
@@ -197,10 +243,10 @@ if __name__ == '__main__':
                 'Scan':['frameID','epo','SRS_X_x','SRS_X_y','SRS_X_z','SRS_Y_x','SRS_Y_y','SRS_Y_z','SRS_Z_x','SRS_Z_y','SRS_Z_z',
                         'FOV_m_x','FOV_m_y','FOV_m_z','FOV_p_x','FOV_p_y','FOV_p_z'] }
 
-        dfnam = ['cat','obs','scan','eph']
+        dfnam = ['cat','eph','obs','scan']
         dfs = []
         for f in infils:
-            dfs.append(read_parse_b(f, cols=cols[f.split('/')[-1].split('.')[0]]))
+            dfs.append(read_parse_b(f, cols=cols[f.split('\\')[-1].split('.')[0]]))
 
         dfs = dict(zip(dfnam, dfs))
 
