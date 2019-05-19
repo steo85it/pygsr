@@ -167,8 +167,9 @@ class obs_eq:
 
         if False:
             #Compute the metric components
-            h00 = (ppn_gamma+1)*GM_sun/(const.c.value**2)
+            h00 = (ppn_gamma+1)*GM_sun/(const.c.value**2 * rPB)
             #TODO
+            hij = 2*ppn_gamma*GM_sun/(const.c.value**2 * rPB)*np.identity(3)
             h01 = 0.0
             h02 = 0.0
             h03 = 0.0
@@ -182,13 +183,24 @@ class obs_eq:
                                        [beta_y*fact, beta_x*beta_y/2, (beta_y**2)/2, beta_y*beta_z/2],
                                        [beta_z*fact, beta_x*beta_z/2, beta_y*beta_z/2, (beta_z**2)/2]])
 
-
             #Compute the SRS attitude matrix
             #TODO: define the Euler angles in the Data Model and substitute a,b,c with their values
             A = eulerAnglesToRotationMatrix([a,b,c])
 
             #Compute the AL observable (phi_calc)
-            E = 0
+            E = np.einsum('ijk,ikl->ijl', A, l_bst)
+            
+            #Compute the direction cosines
+            #Ho preso la formula da Bertone et al. A&A608A, 2017, equazione (6);
+            #al momento è solo un riferimento, sorry Il problema è che devo prendere solo le parti spaziali
+            #delle tetradi per fare il prodotto con hij e k_hat e sto remando
+            denom = E00+Ej0*hij*ki
+            n = -(E[0]i+Eji*hjl*kl)/denom
+            
+            #Compute phi_calc, z_calc and kt AL and AC
+            #ovviamente anche qui dovrei mettere tutto vettoriale, palle!
+            phi = np.arccos(n[0]/numpy.sqrt(1.0-n[3]**2))
+            
         # exit()
         
         # self.df.loc[:,'kt'] = self.proj(k_hat)
