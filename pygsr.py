@@ -17,6 +17,7 @@ from astropy.coordinates import SkyCoord
 # from astropy.constants import c as clight
 from astropy import constants as const
 
+from gsrconst import ppn_gamma
 from gsropt import unix, projv
 
 warnings.filterwarnings("ignore", category=RuntimeWarning)
@@ -117,14 +118,40 @@ class obs_eq:
 
         # self.source = weakref.ref(source)
         print("Processing star #",source.id)
-        self.set_kt(source)
+        self.set_cosPhi(source)
 
         part = ['']
         for p in part:
             self.set_partials(p)
 
 
-    def set_kt(self,source):
+    def set_partials(self,parameter):
+
+        GM_sun, NAB, NPA, NPB, rAB, rPA, rPB = self.get_auxvar(df)
+
+
+        dk = dNAB - (ppn_gamma+1)*GM_sun/(const.c.value**2 * rPB) / (1+np.einsum('ik,jk->j', NPA, NPB)) *(
+            - np.einsum('ik,jk->j', dNPA, NPB)/(1+np.einsum('ik,jk->j', NPA, NPB))*(
+            NAB*RAB/RPA - NAB*(1+RPB/RPA)   ) +
+            NPB/RPA**2 * (RPA*dRAB - RAB*dRPA) - dNAB*(1+rPB/rPA) + NAB*dRPA*rPB/rPA**2
+        )
+
+        h00, h01, h02, h03 = self.set_metric()
+        E_tetrad = self.get_com_tetrad(h00, h01, h02, h03)
+
+        Etet_dk = np.einsum('lij,lj->li', E_tetrad[:,:,1:], dk)
+        Etet_k = np.einsum('lij,lj->li', E_tetrad[:,:,1:], k)
+        dcosPsi = - ( Etet_dk[:,1:]*(E_tetrad[:,0,0]+Etet_k[:,0]) - (E_tetrad[:,1:,0]+Etet_k[:,1:])*Etet_dk[:,0] ) / (
+                        E_tetrad[:,0,0]+Etet_k[:,0]   )**2
+
+        cosPsi = self.set_cosPsi()
+
+        dcosPhi = dcosPsi[:,1]/np.sqrt(1-cosPsi[:,2]**2) + cosPsi[:,0]*cosPsi[:,2]*dcosPsi[:,2]/(1-cosPsi[:,3]**2)**3./2.
+
+
+        # khat = NAB - np.dot( (ppn_gamma+1)*GM_sun/(const.c.value**2 * rPB) * (1+np.einsum('ik,jk->j', NPA, NPB))**(-1) , (rAB/rPA * NPB - (1+rPB/rPA)*NAB))
+
+    def set_khat(self, source):
 
         df = pd.merge(source.obs_df, source.eph_df, on='frameID')
         df = pd.merge(df, source.att_df, on='frameID')
@@ -134,8 +161,6 @@ class obs_eq:
                      distance = 1/source.cat.par.values * u.au,frame='icrs')
                      # pm_ra=source.cat.mu_a.values * u.mas / u.yr, pm_dec=source.cat.mu_d.values*u.mas/u.yr, frame='icrs')
         cstar.representation = 'cartesian'
-
-        ppn_gamma = 1
 
         print(df.columns)
         print(cstar)
@@ -147,63 +172,16 @@ class obs_eq:
 
         df['RPA_x'], df['RPA_y'], df['RPA_z'] = np.transpose(np.subtract(df[['Sun_x','Sun_y','Sun_z']].values,
                                                             np.hstack([cstar.x,cstar.y,cstar.z])))
-        NAB = normalize('RAB',df)
-        rAB = norm('RAB',df)
 
-        NPB = normalize('RPB',df)
-        rPB = norm('RPB',df)
+        GM_sun, NAB, NPA, NPB, rAB, rPA, rPB = self.get_auxvar(df)
 
-        NPA = normalize('RPA',df)
-        rPA = norm('RPA',df)
+        khat = NAB - np.dot( (ppn_gamma+1)*GM_sun/(const.c.value**2 * rPB) * (1+np.einsum('ik,jk->j', NPA, NPB))**(-1) , (rAB/rPA * NPB - (1+rPB/rPA)*NAB))
+        print(khat)
 
-        GM_sun = (const.G*const.M_sun).value
-        beta_sq = (df['Sat_vx']**2+df['Sat_vy']**2+df['Sat_vz']**2)/(((const.c).value)**2)
-        beta_x = df['Sat_vx']/((const.c).value)
-        beta_y = df['Sat_vy']/((const.c).value)
-        beta_z = df['Sat_vz']/((const.c).value)
 
-        k_hat = NAB - np.dot( (ppn_gamma+1)*GM_sun/(const.c.value**2 * rPB) * (1+np.einsum('ik,jk->j', NPA, NPB))**(-1) , (rAB/rPA * NPB - (1+rPB/rPA)*NAB))
-        print(k_hat)
-
-        if False:
-            #Compute the metric components
-            h00 = (ppn_gamma+1)*GM_sun/(const.c.value**2 * rPB)
-            #TODO
-            hij = 2*ppn_gamma*GM_sun/(const.c.value**2 * rPB)*np.identity(3)
-            h01 = 0.0
-            h02 = 0.0
-            h03 = 0.0
-
-            #Compute the local BCRS and the bootsed tetrads
-            l_bcrs = np.array([[h01, 1.0-h00/2, 0.0, 0.0],
-                                [h02, 0.0, 1.0-h00/2, 0.0],
-                                [h03, 0.0, 0.0, 1.0-h00/2]])
-            fact = (1.0+3*h00/2+beta_sq/2)
-            l_bst = l_bcrs+np.array([[beta_x*fact, (beta_x**2)/2, beta_x*beta_y/2, beta_x*beta_z/2],
-                                       [beta_y*fact, beta_x*beta_y/2, (beta_y**2)/2, beta_y*beta_z/2],
-                                       [beta_z*fact, beta_x*beta_z/2, beta_y*beta_z/2, (beta_z**2)/2]])
-
-            #Compute the SRS attitude matrix
-            #TODO: define the Euler angles in the Data Model and substitute a,b,c with their values
-            A = eulerAnglesToRotationMatrix([a,b,c])
-
-            #Compute the AL observable (phi_calc)
-            E = np.einsum('ijk,ikl->ijl', A, l_bst)
-            
-            #Compute the direction cosines
-            #Ho preso la formula da Bertone et al. A&A608A, 2017, equazione (6);
-            #al momento è solo un riferimento, sorry Il problema è che devo prendere solo le parti spaziali
-            #delle tetradi per fare il prodotto con hij e k_hat e sto remando
-            denom = E00+Ej0*hij*ki
-            n = -(E[0]i+Eji*hjl*kl)/denom
-            
-            #Compute phi_calc, z_calc and kt AL and AC
-            #ovviamente anche qui dovrei mettere tutto vettoriale, palle!
-            phi = np.arccos(n[0]/numpy.sqrt(1.0-n[3]**2))
-            
         # exit()
         
-        # self.df.loc[:,'kt'] = self.proj(k_hat)
+        # self.df.loc[:,'kt'] = self.proj(khat)
 
         # print(self.df)
         # kGM_TTF = np.vstack(df['kGM_TTF'].values)
@@ -212,7 +190,74 @@ class obs_eq:
         #
         # kGM_TTF = self.properties['factor']*(np.array(self.properties['term1'])-np.array(self.properties['term2']))
         #
-        # self.k_hat = self.properties['gaia2star'] + kGM_TTF
+        # self.khat = self.properties['gaia2star'] + kGM_TTF
+
+    def get_auxvar(self, df):
+        NAB = normalize('RAB', df)
+        rAB = norm('RAB', df)
+        NPB = normalize('RPB', df)
+        rPB = norm('RPB', df)
+        NPA = normalize('RPA', df)
+        rPA = norm('RPA', df)
+        GM_sun = (const.G * const.M_sun).value
+        beta_sq = (df['Sat_vx'] ** 2 + df['Sat_vy'] ** 2 + df['Sat_vz'] ** 2) / (((const.c).value) ** 2)
+        beta_x = df['Sat_vx'] / ((const.c).value)
+        beta_y = df['Sat_vy'] / ((const.c).value)
+        beta_z = df['Sat_vz'] / ((const.c).value)
+        return GM_sun, NAB, NPA, NPB, rAB, rPA, rPB
+
+    def set_metric(self):
+        # Compute the metric components
+        h00 = (ppn_gamma + 1) * GM_sun / (const.c.value ** 2 * rPB)
+        # TODO
+        hij = 2 * ppn_gamma * GM_sun / (const.c.value ** 2 * rPB) * np.identity(3)
+        h01 = 0.0
+        h02 = 0.0
+        h03 = 0.0
+        return h00, h01, h02, h03
+
+    def set_cosPsi(self):
+
+        h00, h01, h02, h03 = self.set_metric()
+
+        E = self.get_com_tetrad(h00, h01, h02, h03)
+        # Compute the direction cosines
+        # Ho preso la formula da Bertone et al. A&A608A, 2017, equazione (6);
+        # al momento è solo un riferimento, sorry Il problema è che devo prendere solo le parti spaziali
+        # delle tetradi per fare il prodotto con hij e khat e sto remando
+        denom = E00 + Ej0 * hij * ki
+        cosPsi = -(E[0]i+Eji * hjl * kl) / denom
+
+        return cosPsi
+
+    def get_com_tetrad(self, h00, h01, h02, h03):
+        l_bst = self.get_local_frame(h00, h01, h02, h03)
+        # Compute the SRS attitude matrix
+        # TODO: define the Euler angles in the Data Model and substitute a,b,c with their values
+        rot_mat = eulerAnglesToRotationMatrix([a, b, c])
+        # Compute the AL observable (phi_calc)
+        E_tetrad = np.einsum('ijk,ikl->ijl', rot_mat, l_bst)
+        return E_tetrad
+
+    def get_local_frame(self, h00, h01, h02, h03):
+        # Compute the local BCRS and the bootsed tetrads (use hij)
+        l_bcrs = np.array([[h01, 1.0 - h00 / 2, 0.0, 0.0],
+                           [h02, 0.0, 1.0 - h00 / 2, 0.0],
+                           [h03, 0.0, 0.0, 1.0 - h00 / 2]])
+        fact = (1.0 + 3 * h00 / 2 + beta_sq / 2)
+        l_bst = l_bcrs + np.array([[beta_x * fact, (beta_x ** 2) / 2, beta_x * beta_y / 2, beta_x * beta_z / 2],
+                                   [beta_y * fact, beta_x * beta_y / 2, (beta_y ** 2) / 2, beta_y * beta_z / 2],
+                                   [beta_z * fact, beta_x * beta_z / 2, beta_y * beta_z / 2, (beta_z ** 2) / 2]])
+        return l_bst
+
+    def set_cosPhi(self, source):
+
+        self.set_khat(source)
+        self.set_cosPsi()
+
+        # Compute phi_calc, z_calc and kt AL and AC
+        # ovviamente anche qui dovrei mettere tutto vettoriale, palle!
+        phi = np.arccos(n[0] / numpy.sqrt(1.0 - n[3] ** 2))
 
     def plapos(self,jd0, target,center=12):
 
