@@ -84,14 +84,14 @@ def eulerAnglesToRotationMatrix(theta) :
     nrows = theta.shape[0]
 
     alpha = theta[:,0]
-    M1 = np.reshape(np.hstack([np.column_stack((np.ones(nrows), np.zeros(nrows), np.zeros(nrows))),
-                               np.column_stack((np.zeros(nrows), np.cos(alpha), -np.sin(alpha))),
-                               np.column_stack((np.zeros(nrows), np.sin(alpha), np.cos(alpha)))]), (-1, 3, 3))
-
-    alpha = theta[:,1]
-    M2 = np.reshape(np.hstack([np.column_stack((np.cos(alpha), -np.sin(alpha), np.zeros(nrows))),
+    M1 = np.reshape(np.hstack([np.column_stack((np.cos(alpha), -np.sin(alpha), np.zeros(nrows))),
                                np.column_stack((np.sin(alpha), np.cos(alpha), np.zeros(nrows))),
                                np.column_stack((np.zeros(nrows), np.zeros(nrows), np.ones(nrows)))]), (-1, 3, 3))
+
+    alpha = theta[:,1]
+    M2 = np.reshape(np.hstack([np.column_stack((np.ones(nrows), np.zeros(nrows), np.zeros(nrows))),
+                               np.column_stack((np.zeros(nrows), np.cos(alpha), -np.sin(alpha))),
+                               np.column_stack((np.zeros(nrows), np.sin(alpha), np.cos(alpha)))]), (-1, 3, 3))
 
     alpha = theta[:,2]
     M3 = np.reshape(np.hstack([np.column_stack((np.cos(alpha), -np.sin(alpha), np.zeros(nrows))),
@@ -225,8 +225,8 @@ class obs_eq:
         # Ho preso la formula da Bertone et al. A&A608A, 2017, equazione (6);
         # al momento è solo un riferimento, sorry Il problema è che devo prendere solo le parti spaziali
         # delle tetradi per fare il prodotto con hij e khat e sto remando
-        denom = E00 + Ej0 * hij * ki
-        cosPsi = -(E[0]i+Eji * hjl * kl) / denom
+#        denom = E00 + Ej0 * hij * ki
+#        cosPsi = -(E[0]i+Eji * hjl * kl) / denom
 
         return cosPsi
 
