@@ -145,7 +145,7 @@ class obs_eq:
         dcosPsi = - ( Etet_dk[:,1:]*(E_tetrad[:,0,0]+Etet_k[:,0]) - (E_tetrad[:,1:,0]+Etet_k[:,1:])*Etet_dk[:,0] ) / (
                         E_tetrad[:,0,0]+Etet_k[:,0]   )**2
 
-        cosPsi = self.set_cosPsi(source)
+        cosPsi = self.set_cosPsi()
 
         dcosPhi = dcosPsi[:,1]/np.sqrt(1-cosPsi[:,2]**2) + cosPsi[:,0]*cosPsi[:,2]*dcosPsi[:,2]/(1-cosPsi[:,3]**2)**3./2.
 
@@ -218,32 +218,43 @@ class obs_eq:
         h03 = np.zeros(nelem)
         return h00, h01, h02, h03
 
-    def set_cosPsi(self):
+    def set_cosPsi(self,khat):
+
+        # khat = self.auxdf.khat
+        print(khat)
 
         h00, h01, h02, h03, hij = self.set_metric()
 
         print(self.set_metric())
 
-        E = self.get_com_tetrad(h00, h01, h02, h03)
-        print(E)
-        exit()
-        # Compute the direction cosines
-        # Ho preso la formula da Bertone et al. A&A608A, 2017, equazione (6);
-        # al momento è solo un riferimento, sorry Il problema è che devo prendere solo le parti spaziali
-        # delle tetradi per fare il prodotto con hij e khat e sto remando
-#        denom = E00 + Ej0 * deltaij * ki
-#        cosPsi = -(E[0]i+Eji * deltajl * kl) / denom
+        E_tetrad = self.get_com_tetrad(h00, h01, h02, h03)
+        print(E_tetrad)
+
+        Etet_k = np.einsum('lij,lj->li', E_tetrad[:,:,1:], khat)
+
+        denom = E_tetrad[:,0,0]+Etet_k[:,0]
+        cosPsi = -(E_tetrad[:,1:,0]+Etet_k[:,1:]) / denom
+
+        print("cosPsi=")
+        print(cosPsi)
 
         return cosPsi
 
     def get_com_tetrad(self, h00, h01, h02, h03):
         l_bst = self.get_local_frame(h00, h01, h02, h03)
         # Compute the SRS attitude matrix
-        # TODO: define the Euler angles in the Data Model and substitute a,b,c with their values
+        eulerAngles = self.auxdf[['angle_psi','angle_theta','angle_phi']].values
+        rot_mat = eulerAnglesToRotationMatrix(eulerAngles)
 
-        rot_mat = eulerAnglesToRotationMatrix([a, b, c])
         # Compute the AL observable (phi_calc)
-        E_tetrad = np.einsum('ijk,ikl->ijl', rot_mat, l_bst)
+        # TODO: define the Euler angles in the Data Model and substitute a,b,c with their values
+        # replace with
+        # E_tetrad = np.einsum('ijk,ikl->ijl', rot_mat, l_bst[1:])
+        E_tetrad = np.einsum('ijk,ikl->ijl', [rot_mat[0]], [l_bst[1:]])
+
+        # add temporal components E0i
+        E_tetrad = np.concatenate([[[l_bst[0]]],E_tetrad],axis=1)
+
         return E_tetrad
 
     def get_local_frame(self, h00, h01, h02, h03):
@@ -286,11 +297,14 @@ class obs_eq:
         self.auxdf = df
 
         khat = self.set_khat()
-        self.set_cosPsi()
+        cospsi = self.set_cosPsi(khat)
 
         # Compute phi_calc, z_calc and kt AL and AC
         # ovviamente anche qui dovrei mettere tutto vettoriale, palle!
-        phi = np.arccos(n[0] / numpy.sqrt(1.0 - n[3] ** 2))
+        cosphi = cospsi[:,0] / np.sqrt(1.0 - cospsi[:,2]**2)
+        print("phi_calc = ")
+        print(cosphi)
+        exit()
 
     def plapos(self,jd0, target,center=12):
 
@@ -353,9 +367,6 @@ if __name__ == '__main__':
 
     if projv == 'b':
 
-        tmp = eulerAnglesToRotationMatrix(np.array([[1,0,0]]))
-        print(tmp)
-
         infils = glob.glob('auxdir/plan_b/*.txt')
         print(infils)
         cols = {'Ephem':['frameID','epo','Sun_x','Sun_y','Sun_z','Sat_x','Sat_y','Sat_z','Sat_vx','Sat_vy','Sat_vz'],
@@ -372,6 +383,9 @@ if __name__ == '__main__':
                 dfs.append(read_parse_b(f, cols=cols[f.split('\\')[-1].split('.')[0]]))
 
         dfs = dict(zip(dfnam, dfs))
+
+        # update ephemeris units to m, m/s
+        dfs['eph'][dfs['eph'].filter(regex="_[x,y,z]").columns.values] = dfs['eph'].filter(regex="_[x,y,z]").apply(lambda x: (x.values * u.au).to(u.m).value)
 
         stars = [star(x,
                       cat= dfs['cat'].loc[dfs['cat'].sourceID==x])
