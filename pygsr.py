@@ -17,7 +17,7 @@ from astropy.coordinates import SkyCoord
 # from astropy.constants import c as clight
 from astropy import constants as const
 
-from gsrconst import ppn_gamma, GM_sun
+from gsrconst import ppn_gamma
 from gsropt import unix, projv
 
 warnings.filterwarnings("ignore", category=RuntimeWarning)
@@ -121,8 +121,8 @@ class obs_eq:
         self.set_cosPhi(source)
 
         part = ['']
-        for p in part:
-            self.set_partials(source,p)
+#        for p in part:
+#            self.set_partials(source,p)
 
 
     def set_partials(self,source,parameter):
@@ -137,7 +137,7 @@ class obs_eq:
             NPB/rPA**2 * (rPA*drAB - rAB*drPA) - dNAB*(1+rPB/rPA) + NAB*drPA*rPB/rPA**2
         )
 
-        h00, h01, h02, h03, hij = self.set_metric(source)
+        h00, h01, h02, h03 = self.set_metric(source)
         E_tetrad = self.get_com_tetrad(h00, h01, h02, h03)
 
         Etet_dk = np.einsum('lij,lj->li', E_tetrad[:,:,1:], dk)
@@ -196,26 +196,28 @@ class obs_eq:
 
         df = self.auxdf.copy()
 
+        GM_sun = (const.G * const.M_sun).value
         NAB = normalize('RAB', df)
         rAB = norm('RAB', df)
         NPB = normalize('RPB', df)
         rPB = norm('RPB', df)
         NPA = normalize('RPA', df)
         rPA = norm('RPA', df)
-        return NAB, NPA, NPB, rAB, rPA, rPB
-        
-    def get_auxvar_tetrad(self, df):
         beta_sat = df.filter(regex='Sat_v.*').values / ((const.c).value)
-        beta_sq = np.linalg.norm(beta_sat,axis=1)**2
-        return beta_sq, beta_sat
+#        beta_sq = np.linalg.norm(beta_sat,axis=1)**2
+        return GM_sun, NAB, NPA, NPB, rAB, rPA, rPB, beta_sat
 
-    def set_metric(self, rPB):
+    def set_metric(self):
+        GM_sun, NAB, NPA, NPB, rAB, rPA, rPB, beta_sat = self.get_auxvar()
         # Compute the metric components
         h00 = (ppn_gamma + 1) * GM_sun / (const.c.value ** 2 * rPB)
-        nelem = rPB.shape[0]
-        h01 = np.zeros(nelem)
-        h02 = np.zeros(nelem)
-        h03 = np.zeros(nelem)
+        h01 = 0.0
+        h02 = 0.0
+        h03 = 0.0
+#        nelem = rPB.shape[0]
+#        h01 = np.zeros(nelem)
+#        h02 = np.zeros(nelem)
+#        h03 = np.zeros(nelem)
         return h00, h01, h02, h03
 
     def set_cosPsi(self,khat):
@@ -223,7 +225,7 @@ class obs_eq:
         # khat = self.auxdf.khat
         print(khat)
 
-        h00, h01, h02, h03, hij = self.set_metric()
+        h00, h01, h02, h03 = self.set_metric()
 
         print(self.set_metric())
 
