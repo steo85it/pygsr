@@ -121,8 +121,8 @@ class obs_eq:
         self.set_cosPhi(source)
 
         part = ['']
-        for p in part:
-            self.set_partials(source,p)
+#        for p in part:
+#            self.set_partials(source,p)
 
 
     def set_partials(self,source,parameter):
@@ -137,7 +137,7 @@ class obs_eq:
             NPB/rPA**2 * (rPA*drAB - rAB*drPA) - dNAB*(1+rPB/rPA) + NAB*drPA*rPB/rPA**2
         )
 
-        h00, h01, h02, h03, hij = self.set_metric(source)
+        h00, h01, h02, h03 = self.set_metric(source)
         E_tetrad = self.get_com_tetrad(h00, h01, h02, h03)
 
         Etet_dk = np.einsum('lij,lj->li', E_tetrad[:,:,1:], dk)
@@ -196,46 +196,41 @@ class obs_eq:
 
         df = self.auxdf.copy()
 
+        GM_sun = (const.G * const.M_sun).value
         NAB = normalize('RAB', df)
         rAB = norm('RAB', df)
         NPB = normalize('RPB', df)
         rPB = norm('RPB', df)
         NPA = normalize('RPA', df)
         rPA = norm('RPA', df)
-        GM_sun = (const.G * const.M_sun).value
         beta_sat = df.filter(regex='Sat_v.*').values / ((const.c).value)
-        beta_sq = np.linalg.norm(beta_sat,axis=1)**2
-
+#        beta_sq = np.linalg.norm(beta_sat,axis=1)**2
         return GM_sun, NAB, NPA, NPB, rAB, rPA, rPB, beta_sat
 
     def set_metric(self):
-
         GM_sun, NAB, NPA, NPB, rAB, rPA, rPB, beta_sat = self.get_auxvar()
         # Compute the metric components
         h00 = (ppn_gamma + 1) * GM_sun / (const.c.value ** 2 * rPB)
-        # TODO
-        hij = 2 * ppn_gamma * GM_sun / (const.c.value ** 2 * rPB) * np.identity(3)
         h01 = 0.0
         h02 = 0.0
         h03 = 0.0
-        return h00, h01, h02, h03, hij
+#        nelem = rPB.shape[0]
+#        h01 = np.zeros(nelem)
+#        h02 = np.zeros(nelem)
+#        h03 = np.zeros(nelem)
+        return h00, h01, h02, h03
 
     def set_cosPsi(self,khat):
 
         # khat = self.auxdf.khat
         print(khat)
 
-        h00, h01, h02, h03, hij = self.set_metric()
+        h00, h01, h02, h03 = self.set_metric()
 
         print(self.set_metric())
 
         E_tetrad = self.get_com_tetrad(h00, h01, h02, h03)
         print(E_tetrad)
-
-        # Compute the direction cosines
-        # Ho preso la formula da Bertone et al. A&A608A, 2017, equazione (6);
-        # al momento è solo un riferimento, sorry Il problema è che devo prendere solo le parti spaziali
-        # delle tetradi per fare il prodotto con hij e khat e sto remando
 
         Etet_k = np.einsum('lij,lj->li', E_tetrad[:,:,1:], khat)
 
