@@ -17,7 +17,7 @@ from astropy.coordinates import SkyCoord
 # from astropy.constants import c as clight
 from astropy import constants as const
 
-from gsrconst import ppn_gamma
+from gsrconst import ppn_gamma, GM_sun
 from gsropt import unix, projv
 
 warnings.filterwarnings("ignore", category=RuntimeWarning)
@@ -199,21 +199,22 @@ class obs_eq:
         rPB = norm('RPB', df)
         NPA = normalize('RPA', df)
         rPA = norm('RPA', df)
-        GM_sun = (const.G * const.M_sun).value
+        return NAB, NPA, NPB, rAB, rPA, rPB
+        
+    def get_auxvar_tetrad(self, df):
         beta_sq = (df['Sat_vx'] ** 2 + df['Sat_vy'] ** 2 + df['Sat_vz'] ** 2) / (((const.c).value) ** 2)
         beta_x = df['Sat_vx'] / ((const.c).value)
         beta_y = df['Sat_vy'] / ((const.c).value)
         beta_z = df['Sat_vz'] / ((const.c).value)
-        return GM_sun, NAB, NPA, NPB, rAB, rPA, rPB
+        return beta_sq, beta_x, beta_y, beta_z
 
-    def set_metric(self):
+    def set_metric(self, rPB):
         # Compute the metric components
         h00 = (ppn_gamma + 1) * GM_sun / (const.c.value ** 2 * rPB)
-        # TODO
-        hij = 2 * ppn_gamma * GM_sun / (const.c.value ** 2 * rPB) * np.identity(3)
-        h01 = 0.0
-        h02 = 0.0
-        h03 = 0.0
+        nelem = rPB.shape[0]
+        h01 = np.zeros(nelem)
+        h02 = np.zeros(nelem)
+        h03 = np.zeros(nelem)
         return h00, h01, h02, h03
 
     def set_cosPsi(self):
@@ -225,8 +226,8 @@ class obs_eq:
         # Ho preso la formula da Bertone et al. A&A608A, 2017, equazione (6);
         # al momento è solo un riferimento, sorry Il problema è che devo prendere solo le parti spaziali
         # delle tetradi per fare il prodotto con hij e khat e sto remando
-#        denom = E00 + Ej0 * hij * ki
-#        cosPsi = -(E[0]i+Eji * hjl * kl) / denom
+#        denom = E00 + Ej0 * deltaij * ki
+#        cosPsi = -(E[0]i+Eji * deltajl * kl) / denom
 
         return cosPsi
 
