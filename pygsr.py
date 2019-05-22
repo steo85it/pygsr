@@ -157,7 +157,7 @@ class obs_eq:
         GM_sun, NAB, NPA, NPB, rAB, rPA, rPB, beta_sat = self.get_auxvar()
 
         khat = NAB - np.dot( (ppn_gamma+1)*GM_sun/(const.c.value**2 * rPB) * (1+np.einsum('ik,jk->j', NPA, NPB))**(-1) , (rAB/rPA * NPB - (1+rPB/rPA)*NAB))
-        # print(khat)
+        # khat = NAB
 
         return khat
 
@@ -240,7 +240,8 @@ class obs_eq:
         Etet_k = np.einsum('lij,lj->li', E_tetrad[:,:,1:], khat)
 
         denom = E_tetrad[:,0,0]+Etet_k[:,0]
-        cosPsi = -(E_tetrad[:,1:,0]+Etet_k[:,1:]) / denom
+        print(denom.reshape((-1,1)))
+        cosPsi = -(E_tetrad[:,1:,0]+Etet_k[:,1:]) / denom.reshape((-1,1))
 
         print("cosPsi=")
         print(cosPsi)
@@ -266,6 +267,9 @@ class obs_eq:
 
     def get_local_frame(self, h00, h01, h02, h03):
         GM_sun, NAB, NPA, NPB, rAB, rPA, rPB, beta_sat = self.get_auxvar()
+
+        # beta_sat = beta_sat*0
+        # h00 = h00 * 0
 
         # TODO modified to adapt to scalar input (test only)
         beta_x = beta_sat[0,0]
@@ -298,10 +302,14 @@ class obs_eq:
 
     def set_cosPhi(self, source):
 
+        print("processing source", source.id," ...")
+
         df = pd.merge(source.obs_df, source.eph_df, on='frameID')
         df = pd.merge(df, source.att_df, on='frameID')
         self.set_auxdf(source, df)
-        self.auxdf = df
+        self.auxdf = df.loc[:1,:]
+
+        bas_angle = np.rad2deg(self.auxdf.angle_phip - self.auxdf.angle_phi)*2
 
         khat = self.set_khat()
         cospsi = self.set_cosPsi(khat)
@@ -311,6 +319,7 @@ class obs_eq:
         cosphi = cospsi[:,0] / np.sqrt(1.0 - cospsi[:,2]**2)
         print("phi_calc = ")
         print(cosphi)
+        print(np.rad2deg(np.arccos(cosphi)))
         exit()
 
     def plapos(self,jd0, target,center=12):
@@ -374,7 +383,7 @@ if __name__ == '__main__':
 
     if projv == 'b':
 
-        infils = glob.glob('auxdir/plan_b/*.txt')
+        infils = glob.glob('auxdir/plan_b_full/*.txt')
         print(infils)
         cols = {'Ephem':['frameID','epo','Sun_x','Sun_y','Sun_z','Sat_x','Sat_y','Sat_z','Sat_vx','Sat_vy','Sat_vz'],
                 'Catalog':['sourceID','ra','dec','par','mu_a','mu_d'],
@@ -396,7 +405,7 @@ if __name__ == '__main__':
 
         stars = [star(x,
                       cat= dfs['cat'].loc[dfs['cat'].sourceID==x])
-                 for x in dfs['cat'].sourceID.unique()]
+                 for x in dfs['cat'].sourceID.unique()][:1]
 
         for s in stars:
             setattr(s,'obs_df',
