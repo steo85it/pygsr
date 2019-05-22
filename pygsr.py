@@ -127,7 +127,7 @@ class obs_eq:
 
     def set_partials(self,source,parameter):
 
-        GM_sun, NAB, NPA, NPB, rAB, rPA, rPB, beta_sq, beta_x, beta_y, beta_z = self.get_auxvar(source)
+        GM_sun, NAB, NPA, NPB, rAB, rPA, rPB, beta_sat = self.get_auxvar(source)
 
         dNAB = 0
 
@@ -154,7 +154,7 @@ class obs_eq:
 
     def set_khat(self):
 
-        GM_sun, NAB, NPA, NPB, rAB, rPA, rPB, beta_sq, beta_x, beta_y, beta_z = self.get_auxvar()
+        GM_sun, NAB, NPA, NPB, rAB, rPA, rPB, beta_sat = self.get_auxvar()
 
         khat = NAB - np.dot( (ppn_gamma+1)*GM_sun/(const.c.value**2 * rPB) * (1+np.einsum('ik,jk->j', NPA, NPB))**(-1) , (rAB/rPA * NPB - (1+rPB/rPA)*NAB))
         # print(khat)
@@ -203,16 +203,14 @@ class obs_eq:
         NPA = normalize('RPA', df)
         rPA = norm('RPA', df)
         GM_sun = (const.G * const.M_sun).value
-        beta_sq = (df['Sat_vx'] ** 2 + df['Sat_vy'] ** 2 + df['Sat_vz'] ** 2) / (((const.c).value) ** 2)
-        beta_x = df['Sat_vx'] / ((const.c).value)
-        beta_y = df['Sat_vy'] / ((const.c).value)
-        beta_z = df['Sat_vz'] / ((const.c).value)
+        beta_sat = df.filter(regex='Sat_v.*').values / ((const.c).value)
+        beta_sq = np.linalg.norm(beta_sat,axis=1)**2
 
-        return GM_sun, NAB, NPA, NPB, rAB, rPA, rPB, beta_sq, beta_x, beta_y, beta_z
+        return GM_sun, NAB, NPA, NPB, rAB, rPA, rPB, beta_sat
 
     def set_metric(self):
 
-        GM_sun, NAB, NPA, NPB, rAB, rPA, rPB, beta_sq, beta_x, beta_y, beta_z = self.get_auxvar()
+        GM_sun, NAB, NPA, NPB, rAB, rPA, rPB, beta_sat = self.get_auxvar()
         # Compute the metric components
         h00 = (ppn_gamma + 1) * GM_sun / (const.c.value ** 2 * rPB)
         # TODO
@@ -251,8 +249,13 @@ class obs_eq:
         return E_tetrad
 
     def get_local_frame(self, h00, h01, h02, h03):
+        GM_sun, NAB, NPA, NPB, rAB, rPA, rPB, beta_sat = self.get_auxvar()
 
-        GM_sun, NAB, NPA, NPB, rAB, rPA, rPB, beta_sq, beta_x, beta_y, beta_z = self.get_auxvar()
+        # TODO modified to adapt to scalar input (test only)
+        beta_x = beta_sat[0,0]
+        beta_y = beta_sat[0,1]
+        beta_z = beta_sat[0,2]
+        beta_sq = np.linalg.norm(beta_sat,axis=1)[0]
 
         # Compute the local BCRS and the bootsed tetrads (use hij)
         l_bcrs = np.array([[h01, 1.0 - h00 / 2, 0.0, 0.0],
@@ -260,9 +263,21 @@ class obs_eq:
                            [h03, 0.0, 0.0, 1.0 - h00 / 2]])
 
         fact = (1.0 + 3 * h00 / 2 + beta_sq / 2)
+
+        # print("tst locframe")
+        # print(h00)
+        # print(beta_x)
+        # print(l_bcrs)
+        # print(fact)
+
+        u_s = np.hstack([1+h00+beta_sq/2,beta_sat[0,:]])
+
         l_bst = l_bcrs + np.array([[beta_x * fact, (beta_x ** 2) / 2, beta_x * beta_y / 2, beta_x * beta_z / 2],
                                    [beta_y * fact, beta_x * beta_y / 2, (beta_y ** 2) / 2, beta_y * beta_z / 2],
                                    [beta_z * fact, beta_x * beta_z / 2, beta_y * beta_z / 2, (beta_z ** 2) / 2]])
+
+        l_bst = np.vstack([u_s,l_bst])
+
         return l_bst
 
     def set_cosPhi(self, source):
