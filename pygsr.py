@@ -118,18 +118,46 @@ class obs_eq:
 
         # self.source = weakref.ref(source)
         print("Processing star #",source.id)
-        self.set_cosPhi(source)
+        phi = self.set_cosPhi(source)
+        print("Phi = ")
+        print(phi)
+        exit()
 
-        part = ['']
-#        for p in part:
-#            self.set_partials(source,p)
+        print("Processing partials")
+        cstar = SkyCoord(ra=source.cat.ra.values * u.rad, dec=source.cat.dec.values * u.rad,
+                     distance = 1/source.cat.par.values * u.au,frame='icrs')
+                     # pm_ra=source.cat.mu_a.values * u.mas / u.yr, pm_dec=source.cat.mu_d.values*u.mas/u.yr, frame='icrs')
+        cstar.representation = 'cartesian'
+        cstar = np.hstack([cstar.x, cstar.y, cstar.z])
+        rA = np.linalg.norm(cstar)
+        src = source.cat
+        part = {'': 1,
+                'pi': -u.AU/src.par * cstar/rA,
+                'ra': rA*(-np.sin(src.ra)*np.cos(src.dec),
+                          np.cos(src.ra) * np.cos(src.dec),
+                         0),
+                'dec': rA*(-np.cos(src.ra)*np.sin(src.dec),
+                          np.sin(src.ra) * np.sin(src.dec),
+                          np.cos(src.dec))}
+        dt = self.auxdf.epo_x
+        part['mua'] = dt * part['ra']
+        part['mud'] = dt * part['dec']
+
+        for p in part:
+            self.set_partials(source,p)
 
 
-    def set_partials(self,source,parameter):
+    def set_partials(self,partial):
 
-        GM_sun, NAB, NPA, NPB, rAB, rPA, rPB, beta_sat = self.get_auxvar(source)
+        print("Now processing partial w.r.t ", partial.key)
+        dxA = partial.value
 
-        dNAB = 0
+        GM_sun, NAB, NPA, NPB, rAB, rPA, rPB, beta_sat = self.get_auxvar()
+
+        dNAB = - (NAB) / rAB #- (NAB x dxA x NAB) / rAB
+        drAB = - np.einsum('ik,jk->j', NAB, dxA)
+        drPA = np.einsum('ik,jk->j', NPA, dxA)
+        dNPA = (dxA-NPA*drPA)/rPA
 
         dk = dNAB - (ppn_gamma+1)*GM_sun/(const.c.value**2 * rPB) / (1+np.einsum('ik,jk->j', NPA, NPB)) *(
             - np.einsum('ik,jk->j', dNPA, NPB)/(1+np.einsum('ik,jk->j', NPA, NPB))*(
@@ -137,8 +165,10 @@ class obs_eq:
             NPB/rPA**2 * (rPA*drAB - rAB*drPA) - dNAB*(1+rPB/rPA) + NAB*drPA*rPB/rPA**2
         )
 
-        h00, h01, h02, h03 = self.set_metric(source)
-        print(h00)
+        met_tensor = self.set_metric()
+        h00 = met_tensor[:,0,0]
+        #TODO just ok because h0i = 0
+        h01 = h02 = h03 = met_tensor[:,0,1]
 
         E_tetrad = self.get_com_tetrad(h00, h01, h02, h03)
 
@@ -342,7 +372,8 @@ class obs_eq:
         print("phi_calc = ")
         print(cosphi)
         print(np.rad2deg(np.arccos(cosphi)))
-        exit()
+
+        return cosphi
 
     def plapos(self,jd0, target,center=12):
 
