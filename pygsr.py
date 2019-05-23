@@ -18,7 +18,7 @@ from astropy.coordinates import SkyCoord
 from astropy import constants as const
 
 from gsrconst import ppn_gamma
-from gsropt import unix, projv
+from gsropt import unix, projv, debug
 
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 import numpy as np
@@ -53,7 +53,7 @@ def norm(param, df):
 
     cols = [param+'_x',param+'_y',param+'_z']
     tmp = np.vstack(df[cols].values)
-    return np.linalg.norm(tmp)
+    return np.linalg.norm(tmp,axis=1)
 
 def normalize(param, df):
     cols = [param+'_x',param+'_y',param+'_z']
@@ -138,6 +138,8 @@ class obs_eq:
         )
 
         h00, h01, h02, h03 = self.set_metric(source)
+        print(h00)
+
         E_tetrad = self.get_com_tetrad(h00, h01, h02, h03)
 
         Etet_dk = np.einsum('lij,lj->li', E_tetrad[:,:,1:], dk)
@@ -156,7 +158,8 @@ class obs_eq:
 
         GM_sun, NAB, NPA, NPB, rAB, rPA, rPB, beta_sat = self.get_auxvar()
 
-        khat = NAB - np.dot( (ppn_gamma+1)*GM_sun/(const.c.value**2 * rPB) * (1+np.einsum('ik,jk->j', NPA, NPB))**(-1) , (rAB/rPA * NPB - (1+rPB/rPA)*NAB))
+        khat = NAB - np.dot( (ppn_gamma+1)*GM_sun/(const.c.value**2 * rPB) * (1+np.einsum('ik,jk->j', NPA, NPB))**(-1) ,
+                             (np.reshape(rAB/rPA,(-1,1)) * NPB - (1+np.reshape(rPB/rPA,(-1,1)))*NAB))
         # khat = NAB
 
         return khat
@@ -205,41 +208,56 @@ class obs_eq:
         rPA = norm('RPA', df)
         beta_sat = df.filter(regex='Sat_v.*').values / ((const.c).value)
 #        beta_sq = np.linalg.norm(beta_sat,axis=1)**2
+
         return GM_sun, NAB, NPA, NPB, rAB, rPA, rPB, beta_sat
 
     def set_metric(self):
         GM_sun, NAB, NPA, NPB, rAB, rPA, rPB, beta_sat = self.get_auxvar()
         # Compute the metric components
         h00 = (ppn_gamma + 1) * GM_sun / (const.c.value ** 2 * rPB)
-        h01 = 0.0
-        h02 = 0.0
-        h03 = 0.0
-#        nelem = rPB.shape[0]
-#        h01 = np.zeros(nelem)
-#        h02 = np.zeros(nelem)
-#        h03 = np.zeros(nelem)
-        return h00, h01, h02, h03
+
+        nelem = len(rPB)
+        h0i = np.zeros(3*nelem).reshape((nelem,3))
+
+        id3d = np.tile(np.identity(3), (nelem, 1)).reshape(nelem,3,3)
+        hij = np.reshape(-h00,(-1,1,1)) * id3d
+
+        # some help vectors
+        hlp = np.concatenate([np.reshape(h00,(-1,1)),h0i],axis=1)
+        hlp2 = np.concatenate([h0i.reshape((-1,3,1)),hij],axis=2)
+
+        return np.concatenate([hlp.reshape((-1,1,4)),hlp2],axis=1)
 
     def set_cosPsi(self,khat):
 
         # khat = self.auxdf.khat
         print(khat)
 
-        h00, h01, h02, h03 = self.set_metric()
+        met_tensor = self.set_metric()
 
-        print(self.set_metric())
+        if debug:
+            print("metric:")
+            print(self.set_metric())
+
+        h00 = met_tensor[:,0,0]
+
+        #TODO just ok because h0i = 0
+        h01 = h02 = h03 = met_tensor[:,0,1]
 
         E_tetrad = self.get_com_tetrad(h00, h01, h02, h03)
-        print(E_tetrad)
+
+        if debug:
+            print("E_tetrad:")
+            print(E_tetrad)
 
         Etet_k = np.einsum('lij,lj->li', E_tetrad[:,:,1:], khat)
 
         denom = E_tetrad[:,0,0]+Etet_k[:,0]
-        print(denom.reshape((-1,1)))
         cosPsi = -(E_tetrad[:,1:,0]+Etet_k[:,1:]) / denom.reshape((-1,1))
 
-        print("cosPsi=")
-        print(cosPsi)
+        if debug:
+            print("cosPsi=")
+            print(cosPsi)
 
         return cosPsi
 
@@ -249,49 +267,54 @@ class obs_eq:
         eulerAngles = self.auxdf[['angle_psi','angle_theta','angle_phi']].values
         rot_mat = eulerAnglesToRotationMatrix(eulerAngles)
 
-        # Compute the AL observable (phi_calc)
-        # TODO: define the Euler angles in the Data Model and substitute a,b,c with their values
-        # replace with
-        # E_tetrad = np.einsum('ijk,ikl->ijl', rot_mat, l_bst[1:])
-        E_tetrad = np.einsum('ijk,ikl->ijl', [rot_mat[0]], [l_bst[1:]])
-
+        # Compute the spatial part of the tetrad
+        E_tetrad = np.einsum('ijk,ikl->ijl', rot_mat, l_bst[:,1:])
         # add temporal components E0i
-        E_tetrad = np.concatenate([[[l_bst[0]]],E_tetrad],axis=1)
+        E_tetrad = np.concatenate([l_bst[:,:1],E_tetrad],axis=1)
 
         return E_tetrad
 
     def get_local_frame(self, h00, h01, h02, h03):
+
         GM_sun, NAB, NPA, NPB, rAB, rPA, rPB, beta_sat = self.get_auxvar()
 
         # beta_sat = beta_sat*0
         # h00 = h00 * 0
 
-        # TODO modified to adapt to scalar input (test only)
-        beta_x = beta_sat[0,0]
-        beta_y = beta_sat[0,1]
-        beta_z = beta_sat[0,2]
-        beta_sq = np.linalg.norm(beta_sat,axis=1)[0]
+        # beta_x = beta_sat[:,0]
+        # beta_y = beta_sat[:,1]
+        # beta_z = beta_sat[:,2]
+        beta_sq = np.linalg.norm(beta_sat,axis=1)
 
-        # Compute the local BCRS and the bootsed tetrads (use hij)
-        l_bcrs = np.array([[h01, 1.0 - h00 / 2, 0.0, 0.0],
-                           [h02, 0.0, 1.0 - h00 / 2, 0.0],
-                           [h03, 0.0, 0.0, 1.0 - h00 / 2]])
+        # Vectorial form of l_bcrs
+        # l_bcrs = np.array([[h01, 1.0 - h00 / 2, 0.0, 0.0],
+        #                    [h02, 0.0, 1.0 - h00 / 2, 0.0],
+        #                    [h03, 0.0, 0.0, 1.0 - h00 / 2]])
+        nelem = len(h00)
+        id3d = np.tile(np.identity(3), (nelem, 1)).reshape(nelem,3,3)
+        hlp = id3d * (1 - h00/2).reshape(-1,1,1)
+        hlp2 = np.transpose([h01,h02,h03]).reshape(nelem,-1,1)
 
+        l_bcrs = np.concatenate([hlp2,hlp],axis=2)
+
+        # Vectorial form of
+        # l_bst = l_bcrs + np.array([[beta_x * fact, (beta_x ** 2) / 2, beta_x * beta_y / 2, beta_x * beta_z / 2],
+        #                            [beta_y * fact, beta_x * beta_y / 2, (beta_y ** 2) / 2, beta_y * beta_z / 2],
+        #                            [beta_z * fact, beta_x * beta_z / 2, beta_y * beta_z / 2, (beta_z ** 2) / 2]])
         fact = (1.0 + 3 * h00 / 2 + beta_sq / 2)
+        hlp = np.hstack([fact.reshape(-1,1),beta_sat]).reshape((nelem,1,-1))
+        l_bst = l_bcrs + np.einsum('ijk,ikl->ijl', 0.5*beta_sat.reshape((nelem,-1,1)), hlp)
 
-        # print("tst locframe")
-        # print(h00)
-        # print(beta_x)
-        # print(l_bcrs)
-        # print(fact)
+        u_s = np.hstack([np.reshape(1+h00+beta_sq/2,(nelem,1)),beta_sat])
+        u_s = u_s.reshape(nelem,1,-1)
 
-        u_s = np.hstack([1+h00+beta_sq/2,beta_sat[0,:]])
+        l_bst = np.concatenate([u_s,l_bst],axis=1)
 
-        l_bst = l_bcrs + np.array([[beta_x * fact, (beta_x ** 2) / 2, beta_x * beta_y / 2, beta_x * beta_z / 2],
-                                   [beta_y * fact, beta_x * beta_y / 2, (beta_y ** 2) / 2, beta_y * beta_z / 2],
-                                   [beta_z * fact, beta_x * beta_z / 2, beta_y * beta_z / 2, (beta_z ** 2) / 2]])
-
-        l_bst = np.vstack([u_s,l_bst])
+        if debug:
+            print("l_bcrs:")
+            print(l_bcrs)
+            print("l_bst:")
+            print(l_bst)
 
         return l_bst
 
@@ -302,7 +325,11 @@ class obs_eq:
         df = pd.merge(source.obs_df, source.eph_df, on='frameID')
         df = pd.merge(df, source.att_df, on='frameID')
         self.set_auxdf(source, df)
-        self.auxdf = df.loc[:1,:]
+
+        if debug:
+            self.auxdf = df.loc[:1,:].copy()
+        else:
+            self.auxdf = df.copy()
 
         bas_angle = np.rad2deg(self.auxdf.angle_phip - self.auxdf.angle_phi)*2
 
@@ -378,7 +405,7 @@ if __name__ == '__main__':
 
     if projv == 'b':
 
-        infils = glob.glob('auxdir/plan_b_full/*.txt')
+        infils = glob.glob('auxdir/plan_b/*.txt')
         print(infils)
         cols = {'Ephem':['frameID','epo','Sun_x','Sun_y','Sun_z','Sat_x','Sat_y','Sat_z','Sat_vx','Sat_vy','Sat_vz'],
                 'Catalog':['sourceID','ra','dec','par','mu_a','mu_d'],
@@ -401,6 +428,9 @@ if __name__ == '__main__':
         stars = [star(x,
                       cat= dfs['cat'].loc[dfs['cat'].sourceID==x])
                  for x in dfs['cat'].sourceID.unique()][:1]
+
+        if debug:
+            stars = stars[:1]
 
         for s in stars:
             setattr(s,'obs_df',
