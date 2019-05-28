@@ -13,7 +13,7 @@ import warnings
 from astropy import units as u
 from gsr_util import read_parse, read_parse_b
 from gsropt import unix, projv, debug
-from gsrstar import star
+import gsrstar
 
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 
@@ -21,7 +21,7 @@ if __name__ == '__main__':
 
     if projv == 'b':
 
-        infils = glob.glob('auxdir/plan_b_full/*.txt')
+        infils = glob.glob('auxdir/plan_b/*.txt')
         print(infils)
         cols = {'Ephem':['frameID','epo','Sun_x','Sun_y','Sun_z','Sat_x','Sat_y','Sat_z','Sat_vx','Sat_vy','Sat_vz'],
                 'Catalog':['sourceID','ra','dec','par','mu_a','mu_d'],
@@ -43,7 +43,7 @@ if __name__ == '__main__':
         dfs['eph'][dfs['eph'].filter(regex="_[x,y,z]").columns.values] = dfs['eph'].filter(regex="_[x,y,z]").apply(lambda x: (x.values * u.au).to(u.m).value)
         dfs['eph'][dfs['eph'].filter(regex="_[vx,vy,vz]").columns.values] = dfs['eph'].filter(regex="_[vx,vy,vz]").apply(lambda x: (x.values * u.cm/u.s).to(u.m/u.s).value)
 
-        stars = [star(x,
+        stars = [gsrstar.star(x,
                       cat= dfs['cat'].loc[dfs['cat'].sourceID==x])
                  for x in dfs['cat'].sourceID.unique()][:1]
 
@@ -60,18 +60,5 @@ if __name__ == '__main__':
 
         # TODO change to len(s.obs_df > 0) when using full dataset
         [s.set_obs_eq() for s in stars if len(s.eph_df > 0)]
-
-    else:
-        from calcephpy import CalcephBin
-
-        infil = 'auxdir/input.in'
-
-        # open the ephemeris file
-        peph = CalcephBin.open("auxdir/inpop17a_TDB_m100_p100_tt.dat")
-
-        df = read_parse(infil)
-        stars = [star(x, df.loc[df['star_id'] == x]) for x in df.star_id.unique()]
-
-        [s.set_obs_eq() for s in stars]
 
     exit()

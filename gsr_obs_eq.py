@@ -5,7 +5,6 @@ from astropy.coordinates import SkyCoord
 
 from gsrconst import ppn_gamma
 from gsropt import debug
-from pygsr import peph
 from gsr_util import norm, normalize, eulerAnglesToRotationMatrix
 
 
@@ -354,12 +353,12 @@ class obs_eq:
 
         return cosphi
 
-    def plapos(self,jd0, target,center=12):
-
-        # perform the computation
-        PV = peph.compute_unit(np.floor(jd0), jd0 - np.floor(jd0), target, center,Constants.UNIT_KM + Constants.UNIT_SEC)
-        # print('PV',PV)
-        return PV
+    # def plapos(self,jd0, target,center=12):
+    #
+    #     # perform the computation
+    #     PV = peph.compute_unit(np.floor(jd0), jd0 - np.floor(jd0), target, center,Constants.UNIT_KM + Constants.UNIT_SEC)
+    #     # print('PV',PV)
+    #     return PV
 
     def proj(self, k_hat):
 
