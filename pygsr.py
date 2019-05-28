@@ -58,7 +58,7 @@ def norm(param, df):
 def normalize(param, df):
     cols = [param+'_x',param+'_y',param+'_z']
     tmp = np.vstack(df[cols].values)
-    norm = np.linalg.norm(tmp)
+    norm = np.reshape(np.linalg.norm(tmp,axis=1),(-1,1))
     return tmp/norm
 
 # Calculates Rotation Matrix given euler angles.
@@ -97,12 +97,23 @@ def eulerAnglesToRotationMatrix(theta) :
     M3 = np.reshape(np.hstack([np.column_stack((np.cos(alpha), -np.sin(alpha), np.zeros(nrows))),
                                np.column_stack((np.sin(alpha), np.cos(alpha), np.zeros(nrows))),
                                np.column_stack((np.zeros(nrows), np.zeros(nrows), np.ones(nrows)))]), (-1, 3, 3))
+
     #tsipm = 0  # mtimesx(M1,mtimesx(M2,M3));
 
     # Combine rotations
-    tmp = np.einsum('ijk,ikl->ijl', M2, M3)
+    tmp = np.einsum('ijk,ikl->ijl', M2, M1)
 
-    return np.einsum('ijk,ikl->ijl', M1, tmp)
+    if debug:
+        print("M1")
+        print(M1)
+        print("M2")
+        print(M2)
+        print("M3")
+        print(M3)
+        print("M3xM2xM1")
+        print(np.einsum('ijk,ikl->ijl', M3, tmp))
+
+    return np.einsum('ijk,ikl->ijl', M3, tmp)
 
 class obs_eq:
 
@@ -214,8 +225,11 @@ class obs_eq:
 
     def set_auxdf(self, source, df):
 
+        print("parallax")
+        print(source.cat.par.values)
+
         cstar = SkyCoord(ra=source.cat.ra.values * u.rad, dec=source.cat.dec.values * u.rad,
-                     distance = 1/source.cat.par.values * u.au,frame='icrs')
+                     distance = 1/(206265*source.cat.par.values) * u.pc,frame='icrs')
                      # pm_ra=source.cat.mu_a.values * u.mas / u.yr, pm_dec=source.cat.mu_d.values*u.mas/u.yr, frame='icrs')
 
         if debug:
@@ -229,6 +243,12 @@ class obs_eq:
             print("cstar =", cstar)
             print("cstar =", rstar, np.linalg.norm(rstar))
             print("cstar normalized =", rstar/np.linalg.norm(rstar))
+
+            print(rstar)
+            print(df[['Sat_x','Sat_y','Sat_z']].values)
+            print(np.subtract(rstar,
+                                                                    df[['Sat_x','Sat_y','Sat_z']].values))
+            print([2.266305e+19, -3.200638e+15,  2.111004e+19]/np.linalg.norm([2.266305e+19, -3.200638e+15,  2.111004e+19]))
 
         df['RAB_x'],df['RAB_y'],df['RAB_z'] = np.transpose(np.subtract(rstar,
                                                                     df[['Sat_x','Sat_y','Sat_z']].values))
@@ -251,6 +271,10 @@ class obs_eq:
         rPA = norm('RPA', df)
         beta_sat = df.filter(regex='Sat_v.*').values / ((const.c).value)
 #        beta_sq = np.linalg.norm(beta_sat,axis=1)**2
+
+        if debug:
+            print("NAB")
+            print(NAB)
 
         return GM_sun, NAB, NPA, NPB, rAB, rPA, rPB, beta_sat
 
@@ -278,6 +302,7 @@ class obs_eq:
         met_tensor = self.set_metric()
 
         if debug:
+            print("khat")
             print(khat)
             print("metric:")
             print(self.set_metric())
@@ -296,7 +321,7 @@ class obs_eq:
         Etet_k = np.einsum('lkj,lj->lk', E_tetrad[:,:,1:], khat[:,:])
 
         denom = E_tetrad[:,0,0]+Etet_k[:,0]
-        cosPsi = -(E_tetrad[:,0,1:]+Etet_k[:,1:]) / denom.reshape((-1,1))
+        cosPsi = (E_tetrad[:,0,1:]+Etet_k[:,1:]) / denom.reshape((-1,1))
 
         if debug:
             print(E_tetrad[0,:,1:].shape,khat[0,:].shape)
@@ -343,7 +368,7 @@ class obs_eq:
         # print(rot_mat)
 
         # Compute the spatial part of the tetrad
-        E_tetrad = np.einsum('ikj,ikl->ijl', rot_mat, l_bst[:,1:])
+        E_tetrad = np.einsum('ijk,ikl->ijl', rot_mat, l_bst[:,1:])
 
         if debug:
             print("rotmat x l_bst")
@@ -410,7 +435,7 @@ class obs_eq:
         self.set_auxdf(source, df)
 
         if debug:
-            self.auxdf = df.loc[:,:].copy()
+            self.auxdf = df.loc[:1,:].copy()
             print(self.auxdf)
         else:
             self.auxdf = df.copy()
@@ -511,11 +536,12 @@ if __name__ == '__main__':
         dfs = dict(zip(dfnam, dfs))
 
         # update ephemeris units to m, m/s
+        # print(dfs['eph'].filter(regex="_[x,y,z]"))
         dfs['eph'][dfs['eph'].filter(regex="_[x,y,z]").columns.values] = dfs['eph'].filter(regex="_[x,y,z]").apply(lambda x: (x.values * u.au).to(u.m).value)
 
         stars = [star(x,
                       cat= dfs['cat'].loc[dfs['cat'].sourceID==x])
-                 for x in dfs['cat'].sourceID.unique()][740:743]
+                 for x in dfs['cat'].sourceID.unique()][:1]
 
         if debug:
             stars = stars[:]

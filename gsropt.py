@@ -5,7 +5,7 @@
 
 unix = 1
 projv = 'b'
-debug = 0
+debug = 1
 
 # out and aux
 # if (unix == 0):
