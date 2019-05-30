@@ -22,9 +22,10 @@ class obs_eq:
     def setup(self,source):
 
         # self.source = weakref.ref(source)
-        print("Processing star #",source.id)
-        cosphi = self.set_cosPhi(source)
+        if debug:
+            print("Processing star #",source.id)
 
+        cosphi = self.set_cosPhi(source)
 
         if debug:
             bas_angle = np.rad2deg(self.auxdf.angle_phip - self.auxdf.angle_phi)*2
@@ -35,53 +36,55 @@ class obs_eq:
             print("phi_calc deg = ")
             print(np.rad2deg(np.arccos(cosphi)))
 
-        # print("eta = ")
-        # print(-np.rad2deg(self.auxdf.eta.values)* self.auxdf.fovID.values)
-        # print("residuals=")
-        # print((np.arccos(cosphi) - np.deg2rad(53.25) - (-(self.auxdf.eta.values)* self.auxdf.fovID.values)) * rad2arcsec)
-
         if self.simobs:
             phi_obs = (np.rad2deg(np.arccos(cosphi)) - BA / 2)* self.auxdf.fovID.values
-            print("phi_obs=",phi_obs)
             self.auxdf["phi_obs"] = phi_obs
+            if debug:
+                print("phi_obs=", phi_obs)
+
         else:
             phi_calc = (np.rad2deg(np.arccos(cosphi)) - BA / 2)* self.auxdf.fovID.values
-            print("phi_calc=",phi_calc)
-            print("eta=",self.auxdf.eta.values)
             residuals = phi_calc - self.auxdf.eta.values
-            print("residuals = ",residuals)
             self.b = residuals
-            # exit()
-            #
-            print("Processing partials")
+
+            if debug:
+                print("phi_calc=",phi_calc)
+                print("eta=",self.auxdf.eta.values)
+                print("residuals = ",residuals)
+
             rstar = self.get_rstar(self.auxdf, source)
 
             rA = np.reshape(np.linalg.norm(rstar,axis=1),(-1,1))
             src = source.cat
 
             part = {#'': 1,
-                    'pi': -u.pc/src.par*rad2arcsec * rstar/rA,
                     'ra': rA*np.column_stack([-np.sin(src.ra)*np.cos(src.dec),
                               np.cos(src.ra) * np.cos(src.dec),
                              0]).flatten(),
                     'dec': rA*np.column_stack([-np.cos(src.ra)*np.sin(src.dec),
                               np.sin(src.ra) * np.sin(src.dec),
-                              np.cos(src.dec)])}
+                              np.cos(src.dec)]),
+                    'pi': - ( u.pc / src.par * rad2arcsec * rstar / rA)
+                    }
+
+            part['pi'] = part['pi'].to(u.m)
+
             dt = np.reshape(self.auxdf.epo_x.values,(-1,1))
             part['mua'] = dt * part['ra']
             part['mud'] = dt * part['dec']
 
             part_res = []
             for p in part.values():
-                print("Processing ", p)
+                #print("Processing ", p)
                 _ = self.set_partials(p)
                 part_res.append(_)
                 # print(self.set_partials(p))
 
-            self.A = np.column_stack(part_res)
+            self.A = pd.DataFrame(np.column_stack(part_res),columns=['ra','dec','par','mu_a','mu_d'])
 
-            print("b=",self.b)
-            print("A=",self.A)
+            if debug:
+                print("b=",self.b)
+                print("A=",self.A)
 
     def set_partials(self,partial):
 
@@ -136,10 +139,11 @@ class obs_eq:
 
     def set_auxdf(self, source, df):
 
-        print("parallax")
-        print(source.cat.par.values)
-        print("proper motion")
-        print(source.cat.mu_a.values * u.rad / u.yr * np.cos(source.cat.dec.values),source.cat.mu_d.values*u.rad/u.yr)
+        if debug:
+            print("parallax")
+            print(source.cat.par.values)
+            print("proper motion")
+            print(source.cat.mu_a.values * u.rad / u.yr * np.cos(source.cat.dec.values),source.cat.mu_d.values*u.rad/u.yr)
 
         rstar = self.get_rstar(df, source)
 
@@ -327,7 +331,7 @@ class obs_eq:
 
     def set_cosPhi(self, source):
 
-        print("processing source", source.id," ...")
+        # print("processing source", source.id," ...")
 
         df = pd.merge(source.obs_df, source.eph_df, on='frameID')
         df = pd.merge(df, source.att_df, on='frameID')

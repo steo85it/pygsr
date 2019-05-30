@@ -11,6 +11,7 @@ import glob
 import time
 import warnings
 import numpy as np
+from scipy.sparse.linalg import lsqr
 
 from astropy import units as u
 from gsr_util import read_parse, read_parse_b
@@ -67,18 +68,43 @@ if __name__ == '__main__':
 
         # TODO change to len(s.obs_df > 0) when using full dataset
         [s.set_obs_eq(simobs=True) for s in stars if len(s.eph_df > 0)]
-        print(s.obs_eq.auxdf.phi_obs.values)
 
-        # sigma pars in as, as/y
-        sigma_pert = {'ra': 1.e-2 / rad2arcsec, 'dec': 1.e-2 / rad2arcsec, 'par': 1.e-2 / rad2arcsec, 'mu_a': 1.e-4/ rad2arcsec,
-                      'mu_d': 1.e-4 / rad2arcsec}
-        # sigma_pert = {'ra':10/rad2arcsec,'dec':10/rad2arcsec,'par':1/rad2arcsec,'mu_a':0.1/rad2arcsec,'mu_d':0.1/rad2arcsec}
+        if debug:
+            print("Simulated observations (phi_obs)")
+            print(s.obs_eq.auxdf.phi_obs.values)
+
+        # check numerical ders
+        stars[0].numeric_partials()
+
+        # define and apply perturbation to catalog : sigma pars in as, as/y
+        # sigma_pert = {'ra': 1.e-2 / rad2arcsec, 'dec': 1.e-2 / rad2arcsec, 'par': 1.e-2 / rad2arcsec, 'mu_a': 1.e-4/ rad2arcsec,
+        #               'mu_d': 1.e-4 / rad2arcsec}
+        sigma_pert = {'ra':1e-2/rad2arcsec,'dec':1e-2/rad2arcsec} #,'par':1e-2/rad2arcsec,'mu_a':1e-4/rad2arcsec,'mu_d':1e-4/rad2arcsec}
         [s.perturb(sigma_pert=sigma_pert) for s in stars if len(s.eph_df > 0)]
 
         # TODO change to len(s.obs_df > 0) when using full dataset
-        [s.set_obs_eq() for s in stars if len(s.eph_df > 0)]
+        [s.set_obs_eq() for s in stars if len(s.obs_df > 0)]
 
-        exit()
+        for s in stars:
+
+            print("Perts to retrieve :",s.pert)
+            if debug:
+                print("first analyt parts :",s.obs_eq.A.loc[:1,:])
+                print("first numeric parts :",s.num_part.loc[:1,:])
+
+            # solution based on analytical partials
+            subset_anal_part = s.obs_eq.A.loc[:, list(s.pert.keys())].values
+            x = np.linalg.lstsq(subset_anal_part*100.,s.obs_eq.b,rcond=None)
+            print("analyt sol (rad, parts*100) : ", x)
+
+            # solution based on numerical partials
+            subset_num_part = s.num_part.loc[:, list(s.pert.keys())].values
+            x = np.linalg.lstsq(subset_num_part,s.obs_eq.b,rcond=None)
+            print("num sol (rad):", x)
+
+            if debug:
+                x = lsqr(subset_num_part,s.obs_eq.b,show=True)
+                print("num sol scipy (rad):", x)
 
     # stop clock and print runtime
     # -----------------------------
