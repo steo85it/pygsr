@@ -7,6 +7,8 @@ unix = 1
 projv = 'b'
 debug = 0
 
+relat = 1
+
 # out and aux
 # if (unix == 0):
 #     outdir = '/att/nobackup/sberton2/MLA/out/'

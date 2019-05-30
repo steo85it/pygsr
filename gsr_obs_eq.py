@@ -3,73 +3,103 @@ import pandas as pd
 from astropy import constants as const, units as u
 from astropy.coordinates import SkyCoord
 
-from gsrconst import ppn_gamma
-from gsropt import debug
+from gsrconst import ppn_gamma, rad2arcsec, BA
+from gsropt import debug, relat
 from gsr_util import norm, normalize, eulerAnglesToRotationMatrix
 
 
 class obs_eq:
 
-    def __init__(self, source):
+    def __init__(self, source, simobs):
 
         # self.source = weakref.ref(source)
         self.A = None
         self.b = None
         self.x = None
         self.weights = None
+        self.simobs = simobs
 
     def setup(self,source):
 
         # self.source = weakref.ref(source)
         print("Processing star #",source.id)
         cosphi = self.set_cosPhi(source)
-        print("cosPhi = ")
-        print(cosphi)
-        # exit()
-        #
-        # print("Processing partials")
-        # cstar = SkyCoord(ra=source.cat.ra.values * u.rad, dec=source.cat.dec.values * u.rad,
-        #              distance = 1/source.cat.par.values * u.au,frame='icrs')
-        #              # pm_ra=source.cat.mu_a.values * u.mas / u.yr, pm_dec=source.cat.mu_d.values*u.mas/u.yr, frame='icrs')
-        # print(cstar)
-        # print(cstar.to(u.m))
-        # exit()
-        # cstar.representation = 'cartesian'
-        # cstar = np.hstack([cstar.x, cstar.y, cstar.z])
-        # rA = np.linalg.norm(cstar)
-        # src = source.cat
-        # part = {'': 1,
-        #         'pi': -u.AU/src.par * cstar/rA,
-        #         'ra': rA*(-np.sin(src.ra)*np.cos(src.dec),
-        #                   np.cos(src.ra) * np.cos(src.dec),
-        #                  0),
-        #         'dec': rA*(-np.cos(src.ra)*np.sin(src.dec),
-        #                   np.sin(src.ra) * np.sin(src.dec),
-        #                   np.cos(src.dec))}
-        # dt = self.auxdf.epo_x
-        # part['mua'] = dt * part['ra']
-        # part['mud'] = dt * part['dec']
-        #
-        # for p in part:
-        #     self.set_partials(source,p)
 
+
+        if debug:
+            bas_angle = np.rad2deg(self.auxdf.angle_phip - self.auxdf.angle_phi)*2
+            print("bas_angle = ",bas_angle)
+
+            print("cos phi_calc = ")
+            print(cosphi)
+            print("phi_calc deg = ")
+            print(np.rad2deg(np.arccos(cosphi)))
+
+        # print("eta = ")
+        # print(-np.rad2deg(self.auxdf.eta.values)* self.auxdf.fovID.values)
+        # print("residuals=")
+        # print((np.arccos(cosphi) - np.deg2rad(53.25) - (-(self.auxdf.eta.values)* self.auxdf.fovID.values)) * rad2arcsec)
+
+        if self.simobs:
+            phi_obs = (np.rad2deg(np.arccos(cosphi)) - BA / 2)* self.auxdf.fovID.values
+            print("phi_obs=",phi_obs)
+            self.auxdf["phi_obs"] = phi_obs
+        else:
+            phi_calc = (np.rad2deg(np.arccos(cosphi)) - BA / 2)* self.auxdf.fovID.values
+            print("phi_calc=",phi_calc)
+            print("eta=",self.auxdf.eta.values)
+            residuals = phi_calc - self.auxdf.eta.values
+            print("residuals = ",residuals)
+            self.b = residuals
+            # exit()
+            #
+            print("Processing partials")
+            rstar = self.get_rstar(self.auxdf, source)
+
+            rA = np.reshape(np.linalg.norm(rstar,axis=1),(-1,1))
+            src = source.cat
+
+            part = {#'': 1,
+                    'pi': -u.pc/src.par*rad2arcsec * rstar/rA,
+                    'ra': rA*np.column_stack([-np.sin(src.ra)*np.cos(src.dec),
+                              np.cos(src.ra) * np.cos(src.dec),
+                             0]).flatten(),
+                    'dec': rA*np.column_stack([-np.cos(src.ra)*np.sin(src.dec),
+                              np.sin(src.ra) * np.sin(src.dec),
+                              np.cos(src.dec)])}
+            dt = np.reshape(self.auxdf.epo_x.values,(-1,1))
+            part['mua'] = dt * part['ra']
+            part['mud'] = dt * part['dec']
+
+            part_res = []
+            for p in part.values():
+                print("Processing ", p)
+                _ = self.set_partials(p)
+                part_res.append(_)
+                # print(self.set_partials(p))
+
+            self.A = np.column_stack(part_res)
+
+            print("b=",self.b)
+            print("A=",self.A)
 
     def set_partials(self,partial):
 
-        print("Now processing partial w.r.t ", partial.key)
-        dxA = partial.value
+        # print("Now processing partial w.r.t ", partial)
+        dxA = partial
 
         GM_sun, NAB, NPA, NPB, rAB, rPA, rPB, beta_sat = self.get_auxvar()
 
-        dNAB = - (NAB) / rAB #- (NAB x dxA x NAB) / rAB
+        # dNAB = - (NAB[..., None] * dxA[:, None, :]) * NAB[..., None] / rAB[..., None, None] #- (NAB x dxA x NAB) / rAB
+        dNAB = - np.cross(np.cross(NAB,dxA),NAB)/rAB[...,None]
         drAB = - np.einsum('ik,jk->j', NAB, dxA)
         drPA = np.einsum('ik,jk->j', NPA, dxA)
-        dNPA = (dxA-NPA*drPA)/rPA
+        dNPA = - np.cross(np.cross(NPA,dxA),NPA)/rPA[...,None]
 
-        dk = dNAB - (ppn_gamma+1)*GM_sun/(const.c.value**2 * rPB) / (1+np.einsum('ik,jk->j', NPA, NPB)) *(
-            - np.einsum('ik,jk->j', dNPA, NPB)/(1+np.einsum('ik,jk->j', NPA, NPB))*(
-            NAB*rAB/rPA - NAB*(1+rPB/rPA)   ) +
-            NPB/rPA**2 * (rPA*drAB - rAB*drPA) - dNAB*(1+rPB/rPA) + NAB*drPA*rPB/rPA**2
+        dk = dNAB - (ppn_gamma+1)*GM_sun/(const.c.value**2 * rPB[...,None]) / (1+np.einsum('ik,jk->j', NPA, NPB))[...,None] *(
+            - np.einsum('ik,jk->j', dNPA, NPB)[...,None]/(1+np.einsum('ik,jk->j', NPA, NPB)[...,None])*(
+            NAB*(rAB[...,None]/rPA[...,None]) - NAB*(1+rPB[...,None]/rPA[...,None])   ) +
+            NPB/(rPA**2)[...,None] * (rPA*drAB - rAB*drPA)[...,None] - dNAB*(1+rPB[...,None]/rPA[...,None]) + NAB*drPA[...,None]*rPB[...,None]/rPA[...,None]**2
         )
 
         met_tensor = self.set_metric()
@@ -78,18 +108,20 @@ class obs_eq:
         h01 = h02 = h03 = met_tensor[:,0,1]
 
         E_tetrad = self.get_com_tetrad(h00, h01, h02, h03)
+        khat = self.set_khat()
 
         Etet_dk = np.einsum('lij,lj->li', E_tetrad[:,:,1:], dk)
-        Etet_k = np.einsum('lij,lj->li', E_tetrad[:,:,1:], k)
-        dcosPsi = - ( Etet_dk[:,1:]*(E_tetrad[:,0,0]+Etet_k[:,0]) - (E_tetrad[:,1:,0]+Etet_k[:,1:])*Etet_dk[:,0] ) / (
-                        E_tetrad[:,0,0]+Etet_k[:,0]   )**2
+        Etet_k = np.einsum('lkj,lj->lk', E_tetrad[:,:,1:], khat[:,:])
 
-        cosPsi = self.set_cosPsi()
+        dcosPsi = - (Etet_dk[:,1:]*(E_tetrad[:,0,0]+Etet_k[:,0])[...,None]  - (E_tetrad[:,1:,0]+Etet_k[:,1:])*Etet_dk[:,0][...,None] ) / (
+                        E_tetrad[:,0,0]+Etet_k[:,0]   )[...,None]**2
 
-        dcosPhi = dcosPsi[:,1]/np.sqrt(1-cosPsi[:,2]**2) + cosPsi[:,0]*cosPsi[:,2]*dcosPsi[:,2]/(1-cosPsi[:,3]**2)**3./2.
+        cosPsi = self.set_cosPsi(khat)
 
+        dcosPhi = dcosPsi[:,1]/np.sqrt(1-cosPsi[:,2]**2) + cosPsi[:,0]*cosPsi[:,2]*dcosPsi[:,2]/(1-cosPsi[:,2]**2)**3./2.
+        # print("dcosPhi",dcosPhi)
 
-        # khat = NAB - np.dot( (ppn_gamma+1)*GM_sun/(const.c.value**2 * rPB) * (1+np.einsum('ik,jk->j', NPA, NPB))**(-1) , (rAB/rPA * NPB - (1+rPB/rPA)*NAB))
+        return dcosPhi
 
     def set_khat(self):
 
@@ -97,51 +129,23 @@ class obs_eq:
 
         khat = NAB - np.dot( (ppn_gamma+1)*GM_sun/(const.c.value**2 * rPB) * (1+np.einsum('ik,jk->j', NPA, NPB))**(-1) ,
                              (np.reshape(rAB/rPA,(-1,1)) * NPB - (1+np.reshape(rPB/rPA,(-1,1)))*NAB))
-        if debug:
+        if relat==0:
             khat = NAB
 
         return khat
-
-
-        # exit()
-
-        # self.df.loc[:,'kt'] = self.proj(khat)
-
-        # print(self.df)
-        # kGM_TTF = np.vstack(df['kGM_TTF'].values)
-
-        # print(self.properties)
-        #
-        # kGM_TTF = self.properties['factor']*(np.array(self.properties['term1'])-np.array(self.properties['term2']))
-        #
-        # self.khat = self.properties['gaia2star'] + kGM_TTF
 
     def set_auxdf(self, source, df):
 
         print("parallax")
         print(source.cat.par.values)
+        print("proper motion")
+        print(source.cat.mu_a.values * u.rad / u.yr * np.cos(source.cat.dec.values),source.cat.mu_d.values*u.rad/u.yr)
 
-        cstar = SkyCoord(ra=source.cat.ra.values * u.rad, dec=source.cat.dec.values * u.rad,
-                     distance = 1/(206265*source.cat.par.values) * u.pc,frame='icrs')
-                     # pm_ra=source.cat.mu_a.values * u.mas / u.yr, pm_dec=source.cat.mu_d.values*u.mas/u.yr, frame='icrs')
-
-        if debug:
-            print(df.columns)
-            print("cstar radec =", cstar)
-
-        cstar.representation = 'cartesian'
-        rstar = np.hstack([cstar.x.to(u.m),cstar.y.to(u.m),cstar.z.to(u.m)])
+        rstar = self.get_rstar(df, source)
 
         if debug:
-            print("cstar =", cstar)
-            print("cstar =", rstar, np.linalg.norm(rstar))
-            print("cstar normalized =", rstar/np.linalg.norm(rstar))
-
             print(rstar)
             print(df[['Sat_x','Sat_y','Sat_z']].values)
-            print(np.subtract(rstar,
-                                                                    df[['Sat_x','Sat_y','Sat_z']].values))
-            print([2.266305e+19, -3.200638e+15,  2.111004e+19]/np.linalg.norm([2.266305e+19, -3.200638e+15,  2.111004e+19]))
 
         df['RAB_x'],df['RAB_y'],df['RAB_z'] = np.transpose(np.subtract(rstar,
                                                                     df[['Sat_x','Sat_y','Sat_z']].values))
@@ -150,6 +154,27 @@ class obs_eq:
 
         df['RPA_x'], df['RPA_y'], df['RPA_z'] = np.transpose(np.subtract(df[['Sun_x','Sun_y','Sun_z']].values,
                                                             rstar))
+
+    def get_rstar(self, df, source):
+        cstar = SkyCoord(ra=source.cat.ra.values * u.rad, dec=source.cat.dec.values * u.rad,
+                         # distance = 1/(rad2arcsec*source.cat.par.values) * u.pc,frame='icrs')
+                         pm_ra_cosdec=source.cat.mu_a.values * u.rad / u.yr * np.cos(source.cat.dec.values),
+                         pm_dec=source.cat.mu_d.values * u.rad / u.yr,
+                         distance=1 / (rad2arcsec * source.cat.par.values) * u.pc, frame='icrs')
+        cstar = cstar.apply_space_motion(dt=df.epo_x * u.year)
+        if debug:
+            print("cstar radec + pm =", cstar)
+
+        cstar.representation_type = 'cartesian'
+        rstar = np.column_stack([cstar.x.to(u.m), cstar.y.to(u.m), cstar.z.to(u.m)])
+
+
+        if debug:
+            print("cstar =", cstar)
+            print("cstar =", rstar, np.linalg.norm(rstar))
+            print("cstar normalized =", rstar/np.linalg.norm(rstar))
+
+        return rstar
 
     def get_auxvar(self):
 
@@ -198,7 +223,7 @@ class obs_eq:
             print("khat")
             print(khat)
             print("metric:")
-            print(self.set_metric())
+            print(met_tensor)
 
         h00 = met_tensor[:,0,0]
 
@@ -238,25 +263,6 @@ class obs_eq:
         l_bst = self.get_local_frame(h00, h01, h02, h03)
         # Compute the SRS attitude matrix
         eulerAngles = self.auxdf[['angle_psi','angle_theta','angle_phi']].values
-        # TODO ACHTUNG!!!
-        # eulerAngles1 = eulerAngles + np.vstack([[0,0,np.deg2rad(53.25)],[0,0,np.deg2rad(53.25)]])
-        # # exit()
-        # rot_mat = eulerAnglesToRotationMatrix(eulerAngles1)
-        # print("rot_mat +53")
-        # print(rot_mat[:,0,:])
-        # eulerAngles1 = eulerAngles - np.vstack([[0,0,np.deg2rad(53.25)],[0,0,np.deg2rad(53.25)]])
-        # # exit()
-        # rot_mat = eulerAnglesToRotationMatrix(eulerAngles1)
-        # print("rot_mat -53")
-        # print(rot_mat[:,0,:])
-        #
-        # # print(cartesian_to_spherical(rot_mat[:,0,0], rot_mat[:,1,0], rot_mat[:,2,0]))
-        # #
-        # # cstar = SkyCoord(x= rot_mat[0,0,0] * u.m, y=rot_mat[0,1,0] * u.m, z=rot_mat[0,2,0] * u.m,frame='icrs')
-        # # print(cstar)
-        # #              # pm_ra=source.cat.mu_a.values * u.mas / u.yr, pm_dec=source.cat.mu_d.values*u.mas/u.yr, frame='icrs')
-        # # cstar.representation = 'spherical'
-        # # print(cstar)
         rot_mat = eulerAnglesToRotationMatrix(eulerAngles)
         # print(rot_mat)
 
@@ -278,7 +284,7 @@ class obs_eq:
 
         GM_sun, NAB, NPA, NPB, rAB, rPA, rPB, beta_sat = self.get_auxvar()
 
-        if debug:
+        if relat==0:
             beta_sat = beta_sat*0
             h00 = h00 * 0
 
@@ -303,8 +309,8 @@ class obs_eq:
         #                            [beta_y * fact, beta_x * beta_y / 2, (beta_y ** 2) / 2, beta_y * beta_z / 2],
         #                            [beta_z * fact, beta_x * beta_z / 2, beta_y * beta_z / 2, (beta_z ** 2) / 2]])
         fact = (1.0 + 3 * h00 / 2 + beta_sq / 2)
-        hlp = np.hstack([fact.reshape(-1,1),beta_sat]).reshape((nelem,1,-1))
-        l_bst = l_bcrs + np.einsum('ijk,ikl->ijl', 0.5*beta_sat.reshape((nelem,-1,1)), hlp)
+        hlp = np.hstack([fact.reshape(-1,1),0.5*beta_sat]).reshape((nelem,1,-1))
+        l_bst = l_bcrs + np.einsum('ijk,ikl->ijl', beta_sat.reshape((nelem,-1,1)), hlp)
 
         u_s = np.hstack([np.reshape(1+h00+beta_sq/2,(nelem,1)),beta_sat])
         u_s = u_s.reshape(nelem,1,-1)
@@ -333,23 +339,13 @@ class obs_eq:
         else:
             self.auxdf = df.copy()
 
-        if debug:
-            bas_angle = np.rad2deg(self.auxdf.angle_phip - self.auxdf.angle_phi)*2
-            print("bas_angle = ",bas_angle)
-
         khat = self.set_khat()
         cospsi = self.set_cosPsi(khat)
 
         # Compute phi_calc, z_calc and kt AL and AC
-        # ovviamente anche qui dovrei mettere tutto vettoriale, palle!
         cosphi = cospsi[:,0] / np.sqrt(1.0 - cospsi[:,2]**2)
-        print("cos phi_calc = ")
-        print(cosphi)
-        print("phi_calc deg = ")
-        print(np.rad2deg(np.arccos(cosphi)))
-        print(np.rad2deg(np.arccos(cosphi))-53.25)
-        print("eta = ")
-        print(np.rad2deg(self.auxdf.eta.values))
+        # apply fovID
+        # cosphi = cosphi * self.auxdf.fovID.values
 
         return cosphi
 
@@ -363,6 +359,3 @@ class obs_eq:
     def proj(self, k_hat):
 
         return np.linalg.norm(k_hat,axis=1)
-
-    def set_partials(self, p):
-        pass
