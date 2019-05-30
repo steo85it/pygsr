@@ -10,6 +10,7 @@
 import glob
 import time
 import warnings
+import numpy as np
 
 from astropy import units as u
 from gsr_util import read_parse, read_parse_b
@@ -28,7 +29,7 @@ if __name__ == '__main__':
 
     if projv == 'b':
 
-        infils = glob.glob('auxdir/plan_b_full/*.txt')
+        infils = np.sort(glob.glob('auxdir/plan_b/*.txt'))
         print(infils)
         cols = {'Ephem':['frameID','epo','Sun_x','Sun_y','Sun_z','Sat_x','Sat_y','Sat_z','Sat_vx','Sat_vy','Sat_vz'],
                 'Catalog':['sourceID','ra','dec','par','mu_a','mu_d'],
