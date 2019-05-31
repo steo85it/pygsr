@@ -2,10 +2,12 @@
 # ----------------------------------
 
 ##############################################
+from gsrconst import rad2arcsec
 
 unix = 1
 projv = 'b'
 debug = 0
+num_parts = 0
 
 relat = 1
 
@@ -17,3 +19,4 @@ relat = 1
 # #    outdir = '/home/sberton2/Works/NASA/Mercury_tides/out/'
 #     outdir = '/home/sberton2/Works/NASA/LOLA/out/'
 #     auxdir = '/home/sberton2/Works/NASA/LOLA/aux/'
+sigma_pert = {'ra':1e-2/rad2arcsec,'dec':1e-2/rad2arcsec} #,'par':1e-2/rad2arcsec,'mu_a':1e-4/rad2arcsec,'mu_d':1e-4/rad2arcsec}

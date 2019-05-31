@@ -14,9 +14,8 @@ import numpy as np
 from scipy.sparse.linalg import lsqr
 
 from astropy import units as u
-from gsr_util import read_parse, read_parse_b
-from gsrconst import rad2arcsec
-from gsropt import unix, projv, debug
+from gsr_util import read_parse_b
+from gsropt import unix, projv, debug, num_parts, sigma_pert
 import gsrstar
 
 warnings.filterwarnings("ignore", category=RuntimeWarning)
@@ -30,7 +29,7 @@ if __name__ == '__main__':
 
     if projv == 'b':
 
-        infils = np.sort(glob.glob('auxdir/plan_b/*.txt'))
+        infils = np.sort(glob.glob('auxdir/plan_b_full/*.txt'))
         print(infils)
         cols = {'Ephem':['frameID','epo','Sun_x','Sun_y','Sun_z','Sat_x','Sat_y','Sat_z','Sat_vx','Sat_vy','Sat_vz'],
                 'Catalog':['sourceID','ra','dec','par','mu_a','mu_d'],
@@ -53,7 +52,7 @@ if __name__ == '__main__':
 
         stars = [gsrstar.star(x,
                       cat= dfs['cat'].loc[dfs['cat'].sourceID==x])
-                 for x in dfs['cat'].sourceID.unique()][:1]
+                 for x in dfs['cat'].sourceID.unique()[:]]
 
         if debug:
             stars = stars[:]
@@ -65,46 +64,54 @@ if __name__ == '__main__':
                     dfs['eph'].loc[dfs['eph'].frameID.isin(s.obs_df.frameID)] )
             setattr(s,'att_df',
                     dfs['scan'].loc[dfs['scan'].frameID.isin(s.obs_df.frameID)] )
+            s.obs_df.reset_index(inplace=True)
+            s.eph_df.reset_index(inplace=True)
+            s.att_df.reset_index(inplace=True)
 
         # TODO change to len(s.obs_df > 0) when using full dataset
-        [s.set_obs_eq(simobs=True) for s in stars if len(s.eph_df > 0)]
+        [s.set_obs_eq(simobs=True) for s in stars if len(s.obs_df > 0)]
 
         if debug:
             print("Simulated observations (phi_obs)")
-            print(s.obs_eq.auxdf.phi_obs.values)
+            print([s.obs_eq.auxdf.phi_obs for s in stars])
+        # exit()
 
         # check numerical ders
-        stars[0].numeric_partials()
+        if num_parts:
+            [s.numeric_partials() for s in stars]
 
         # define and apply perturbation to catalog : sigma pars in as, as/y
         # sigma_pert = {'ra': 1.e-2 / rad2arcsec, 'dec': 1.e-2 / rad2arcsec, 'par': 1.e-2 / rad2arcsec, 'mu_a': 1.e-4/ rad2arcsec,
         #               'mu_d': 1.e-4 / rad2arcsec}
-        sigma_pert = {'ra':1e-2/rad2arcsec,'dec':1e-2/rad2arcsec} #,'par':1e-2/rad2arcsec,'mu_a':1e-4/rad2arcsec,'mu_d':1e-4/rad2arcsec}
-        [s.perturb(sigma_pert=sigma_pert) for s in stars if len(s.eph_df > 0)]
+        [s.perturb(sigma_pert=sigma_pert) for s in stars if len(s.obs_df > 0)]
 
         # TODO change to len(s.obs_df > 0) when using full dataset
         [s.set_obs_eq() for s in stars if len(s.obs_df > 0)]
 
         for s in stars:
 
+            print("Solution for star #", s.id)
             print("Perts to retrieve :",s.pert)
+            # print(s.obs_eq.b)
             if debug:
                 print("first analyt parts :",s.obs_eq.A.loc[:1,:])
-                print("first numeric parts :",s.num_part.loc[:1,:])
+                if num_parts:
+                    print("first numeric parts :",s.num_part.loc[:1,:])
 
             # solution based on analytical partials
             subset_anal_part = s.obs_eq.A.loc[:, list(s.pert.keys())].values
             x = np.linalg.lstsq(subset_anal_part*100.,s.obs_eq.b,rcond=None)
             print("analyt sol (rad, parts*100) : ", x)
 
-            # solution based on numerical partials
-            subset_num_part = s.num_part.loc[:, list(s.pert.keys())].values
-            x = np.linalg.lstsq(subset_num_part,s.obs_eq.b,rcond=None)
-            print("num sol (rad):", x)
+            if num_parts:
+                # solution based on numerical partials
+                subset_num_part = s.num_part.loc[:, list(s.pert.keys())].values
+                x = np.linalg.lstsq(subset_num_part,s.obs_eq.b,rcond=None)
+                print("num sol (rad):", x)
 
-            if debug:
-                x = lsqr(subset_num_part,s.obs_eq.b,show=True)
-                print("num sol scipy (rad):", x)
+                if debug:
+                    x = lsqr(subset_num_part,s.obs_eq.b,show=True)
+                    print("num sol scipy (rad):", x)
 
     # stop clock and print runtime
     # -----------------------------

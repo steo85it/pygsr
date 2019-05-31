@@ -45,7 +45,7 @@ class obs_eq:
         else:
             phi_calc = (np.rad2deg(np.arccos(cosphi)) - BA / 2)* self.auxdf.fovID.values
             residuals = phi_calc - self.auxdf.eta.values
-            self.b = residuals
+            self.b = np.nan_to_num(residuals)
 
             if debug:
                 print("phi_calc=",phi_calc)
@@ -58,13 +58,13 @@ class obs_eq:
             src = source.cat
 
             part = {#'': 1,
-                    'ra': rA*np.column_stack([-np.sin(src.ra)*np.cos(src.dec),
-                              np.cos(src.ra) * np.cos(src.dec),
+                    'ra': rA*np.column_stack([-np.sin(src.ra.values)*np.cos(src.dec.values),
+                              np.cos(src.ra.values) * np.cos(src.dec.values),
                              0]).flatten(),
-                    'dec': rA*np.column_stack([-np.cos(src.ra)*np.sin(src.dec),
-                              np.sin(src.ra) * np.sin(src.dec),
-                              np.cos(src.dec)]),
-                    'pi': - ( u.pc / src.par * rad2arcsec * rstar / rA)
+                    'dec': rA*np.column_stack([-np.cos(src.ra.values)*np.sin(src.dec.values),
+                              np.sin(src.ra.values) * np.sin(src.dec.values),
+                              np.cos(src.dec.values)]),
+                    'pi': - rstar/rA * ( 1 / (rad2arcsec * source.cat.par.values)**2) * u.pc
                     }
 
             part['pi'] = part['pi'].to(u.m)
@@ -80,7 +80,7 @@ class obs_eq:
                 part_res.append(_)
                 # print(self.set_partials(p))
 
-            self.A = pd.DataFrame(np.column_stack(part_res),columns=['ra','dec','par','mu_a','mu_d'])
+            self.A = pd.DataFrame(np.column_stack(part_res),columns=['ra','dec','par','mu_a','mu_d']).fillna(value=0)
 
             if debug:
                 print("b=",self.b)
@@ -104,6 +104,9 @@ class obs_eq:
             NAB*(rAB[...,None]/rPA[...,None]) - NAB*(1+rPB[...,None]/rPA[...,None])   ) +
             NPB/(rPA**2)[...,None] * (rPA*drAB - rAB*drPA)[...,None] - dNAB*(1+rPB[...,None]/rPA[...,None]) + NAB*drPA[...,None]*rPB[...,None]/rPA[...,None]**2
         )
+
+        if relat==0:
+            dk = dNAB
 
         met_tensor = self.set_metric()
         h00 = met_tensor[:,0,0]
@@ -140,6 +143,7 @@ class obs_eq:
     def set_auxdf(self, source, df):
 
         if debug:
+            print(source.cat)
             print("parallax")
             print(source.cat.par.values)
             print("proper motion")
@@ -160,12 +164,17 @@ class obs_eq:
                                                             rstar))
 
     def get_rstar(self, df, source):
+
+        # print(df.epo_x.values)
+        # exit()
+
         cstar = SkyCoord(ra=source.cat.ra.values * u.rad, dec=source.cat.dec.values * u.rad,
                          # distance = 1/(rad2arcsec*source.cat.par.values) * u.pc,frame='icrs')
                          pm_ra_cosdec=source.cat.mu_a.values * u.rad / u.yr * np.cos(source.cat.dec.values),
                          pm_dec=source.cat.mu_d.values * u.rad / u.yr,
                          distance=1 / (rad2arcsec * source.cat.par.values) * u.pc, frame='icrs')
-        cstar = cstar.apply_space_motion(dt=df.epo_x * u.year)
+        cstar = cstar.apply_space_motion(dt=df.epo_x.values * u.year)
+
         if debug:
             print("cstar radec + pm =", cstar)
 
