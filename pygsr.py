@@ -15,7 +15,8 @@ from scipy.sparse.linalg import lsqr
 
 from astropy import units as u
 from gsr_util import read_parse_b
-from gsropt import unix, projv, debug, num_parts, sigma_pert
+from gsrconst import rad2arcsec
+from gsropt import unix, projv, num_parts, opt, debug
 import gsrstar
 
 warnings.filterwarnings("ignore", category=RuntimeWarning)
@@ -28,6 +29,13 @@ if __name__ == '__main__':
     start = time.time()
 
     if projv == 'b':
+
+        options = opt()
+        options.set_cat_err({'ra': 1e-2 / rad2arcsec,
+                      'dec': 1e-2 / rad2arcsec})  # ,'par':1e-2/rad2arcsec,'mu_a':1e-4/rad2arcsec,'mu_d':1e-4/rad2arcsec}
+        options.set_meas_err_sigma(0) #1e-3 / rad2arcsec)
+        # options.set_debug(0)
+        options.set_relat(1)
 
         infils = np.sort(glob.glob('auxdir/plan_b/*.txt'))
         print(infils)
@@ -51,7 +59,7 @@ if __name__ == '__main__':
         dfs['eph'][dfs['eph'].filter(regex="_v[x,y,z]").columns.values] = dfs['eph'].filter(regex="_v[x,y,z]").apply(lambda x: (x.values * u.cm/u.s).to(u.m/u.s).value)
 
         stars = [gsrstar.star(x,
-                      cat= dfs['cat'].loc[dfs['cat'].sourceID==x])
+                      cat= dfs['cat'].loc[dfs['cat'].sourceID==x],opt=options)
                  for x in dfs['cat'].sourceID.unique()[:]]
 
         if debug:
@@ -83,7 +91,7 @@ if __name__ == '__main__':
         # define and apply perturbation to catalog : sigma pars in as, as/y
         # sigma_pert = {'ra': 1.e-2 / rad2arcsec, 'dec': 1.e-2 / rad2arcsec, 'par': 1.e-2 / rad2arcsec, 'mu_a': 1.e-4/ rad2arcsec,
         #               'mu_d': 1.e-4 / rad2arcsec}
-        [s.perturb(sigma_pert=sigma_pert) for s in stars if len(s.obs_df > 0)]
+        [s.perturb(sigma_pert=options.sigma_pert) for s in stars if len(s.obs_df > 0)]
 
         # TODO change to len(s.obs_df > 0) when using full dataset
         [s.set_obs_eq() for s in stars if len(s.obs_df > 0)]

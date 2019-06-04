@@ -4,13 +4,13 @@ from astropy import constants as const, units as u
 from astropy.coordinates import SkyCoord
 
 from gsrconst import ppn_gamma, rad2arcsec, BA
-from gsropt import debug, relat
+from gsropt import debug
 from gsr_util import norm, normalize, eulerAnglesToRotationMatrix
 
 
 class obs_eq:
 
-    def __init__(self, source, simobs):
+    def __init__(self, source, simobs,opt):
 
         # self.source = weakref.ref(source)
         self.A = None
@@ -18,6 +18,7 @@ class obs_eq:
         self.x = None
         self.weights = None
         self.simobs = simobs
+        self.opt = opt
 
     def setup(self,source):
 
@@ -105,7 +106,7 @@ class obs_eq:
             NPB/(rPA**2)[...,None] * (rPA*drAB - rAB*drPA)[...,None] - dNAB*(1+rPB[...,None]/rPA[...,None]) + NAB*drPA[...,None]*rPB[...,None]/rPA[...,None]**2
         )
 
-        if relat==0:
+        if self.opt.relat==0:
             dk = dNAB
 
         met_tensor = self.set_metric()
@@ -135,7 +136,7 @@ class obs_eq:
 
         khat = NAB - np.dot( (ppn_gamma+1)*GM_sun/(const.c.value**2 * rPB) * (1+np.einsum('ik,jk->j', NPA, NPB))**(-1) ,
                              (np.reshape(rAB/rPA,(-1,1)) * NPB - (1+np.reshape(rPB/rPA,(-1,1)))*NAB))
-        if relat==0:
+        if self.opt.relat==0:
             khat = NAB
 
         return khat
@@ -297,7 +298,7 @@ class obs_eq:
 
         GM_sun, NAB, NPA, NPB, rAB, rPA, rPB, beta_sat = self.get_auxvar()
 
-        if relat==0:
+        if self.opt.relat==0:
             beta_sat = beta_sat*0
             h00 = h00 * 0
 

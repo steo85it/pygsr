@@ -7,12 +7,12 @@ import random
 import pandas as pd
 
 from gsrconst import rad2arcsec
-from gsropt import debug, meas_err_sigma
+from gsropt import debug
 
 
 class star:
 
-    def __init__(self, id, cat):
+    def __init__(self, id, cat,opt):
 
         self.id = id
         self.cat = cat
@@ -23,6 +23,7 @@ class star:
         self.att_df = None
         self.obs_eq = None
         self.num_part = None
+        self.opt = opt
 
         print("Processing star #", self.id)
 
@@ -87,7 +88,7 @@ class star:
 
     def set_obs_eq(self,simobs=False):
 
-        self.obs_eq = obs_eq(self,simobs)
+        self.obs_eq = obs_eq(self,simobs,self.opt)
         self.obs_eq.setup(self)
 
         if simobs:
@@ -100,10 +101,12 @@ class star:
                 # print(self.obs_eq.auxdf.phi_obs)
                 self.obs_df = self.obs_df[:len(self.obs_eq.auxdf.phi_obs)]
 
+                meas_err_sigma = self.opt.meas_err_sigma
                 if meas_err_sigma != 0:
                     measurm_err = [random.gauss(0, meas_err_sigma) for i in self.obs_eq.auxdf.phi_obs.values]
-
-                self.obs_df['eta'] = self.obs_eq.auxdf.phi_obs.values + measurm_err
+                    self.obs_df['eta'] = self.obs_eq.auxdf.phi_obs.values + measurm_err
+                else:
+                    self.obs_df['eta'] = self.obs_eq.auxdf.phi_obs.values
 
                 if debug:
                     print(self.obs_eq.auxdf.phi_obs.values, measurm_err)
