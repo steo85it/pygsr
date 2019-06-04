@@ -7,7 +7,7 @@ import random
 import pandas as pd
 
 from gsrconst import rad2arcsec
-from gsropt import debug
+from gsropt import debug, meas_err_sigma
 
 
 class star:
@@ -99,7 +99,15 @@ class star:
                     print("Inconsistent number of obs in star#", self.id,len(self.obs_eq.auxdf), len(self.obs_df))
                 # print(self.obs_eq.auxdf.phi_obs)
                 self.obs_df = self.obs_df[:len(self.obs_eq.auxdf.phi_obs)]
-                self.obs_df['eta'] = self.obs_eq.auxdf.phi_obs.values
+
+                if meas_err_sigma != 0:
+                    measurm_err = [random.gauss(0, meas_err_sigma) for i in self.obs_eq.auxdf.phi_obs.values]
+
+                self.obs_df['eta'] = self.obs_eq.auxdf.phi_obs.values + measurm_err
+
+                if debug:
+                    print(self.obs_eq.auxdf.phi_obs.values, measurm_err)
+                    # exit()
 
     # save object to pkl
     def save(self, filnam):
