@@ -12,7 +12,7 @@ from gsropt import debug
 
 class star:
 
-    def __init__(self, id, cat,opt):
+    def __init__(self, id=0, cat=0,opt=0):
 
         self.id = id
         self.cat = cat
@@ -25,7 +25,7 @@ class star:
         self.num_part = None
         self.opt = opt
 
-        print("Processing star #", self.id)
+        # print("Processing star #", self.id)
 
     def perturb(self,sigma_pert):
 
