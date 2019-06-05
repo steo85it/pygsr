@@ -299,7 +299,7 @@ class obs_eq:
         GM_sun, NAB, NPA, NPB, rAB, rPA, rPB, beta_sat = self.get_auxvar()
 
         if self.opt.relat==0:
-            beta_sat = beta_sat*0
+            # beta_sat = beta_sat*0
             h00 = h00 * 0
 
         # beta_x = beta_sat[:,0]
