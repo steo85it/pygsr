@@ -36,7 +36,7 @@ class star:
 
         random.seed(self.id)
         self.pert = dict(zip(sigma_pert.keys(),[random.gauss(0, parstd) for parstd in sigma_pert.values()]))
-        self.cat = self.cat.reset_index(drop=True).add(pd.DataFrame(self.pert,index=[0]),fill_value=0)
+        self.cat = self.cat_orig.reset_index(drop=True).add(pd.DataFrame(self.pert,index=[0]),fill_value=0)
 
         if debug:
             print(pd.DataFrame(self.pert,index=[0]))
@@ -46,7 +46,7 @@ class star:
 
     def numeric_partials(self):
 
-        pert = {'ra':0.1/rad2arcsec,'dec':0.1/rad2arcsec,'par':1.e-8/rad2arcsec,'mu_a':0.01/rad2arcsec,'mu_d':0.01/rad2arcsec}
+        pert = {'ra':0.01/rad2arcsec,'dec':0.01/rad2arcsec,'par':1.e-4/rad2arcsec,'mu_a':0.01/rad2arcsec,'mu_d':0.01/rad2arcsec}
 
         num_part = []
         for par,pval in pert.items():
@@ -55,6 +55,9 @@ class star:
             # self.pert = dict(zip(sigma_pert.keys(),p))
             if debug:
                 print("Processing", par,':',pval)
+
+            # restore initial values
+            self.cat = self.cat_orig
 
             self.cat = self.cat.reset_index(drop=True).add(pd.DataFrame(dict(zip([par],[pval])),index=[0]),fill_value=0)
             # print("compute +",pval,self.cat)
