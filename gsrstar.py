@@ -101,15 +101,15 @@ class star:
                 # print(self.obs_eq.auxdf.phi_obs)
                 self.obs_df = self.obs_df[:len(self.obs_eq.auxdf.phi_obs)]
 
-                meas_err_sigma = self.opt.meas_err_sigma
+                meas_err_sigma = self.opt.meas_err_sigma # in radians
                 if meas_err_sigma != 0:
                     measurm_err = [random.gauss(0, meas_err_sigma) for i in self.obs_eq.auxdf.phi_obs.values]
-                    self.obs_df['eta'] = self.obs_eq.auxdf.phi_obs.values + measurm_err
+                    self.obs_df['eta'] = self.obs_eq.auxdf.phi_obs.values + np.rad2deg(measurm_err)
                 else:
                     self.obs_df['eta'] = self.obs_eq.auxdf.phi_obs.values
 
                 if debug:
-                    print(self.obs_eq.auxdf.phi_obs.values, measurm_err)
+                    print(self.obs_eq.auxdf.phi_obs.values, np.rad2deg(measurm_err))
                     # exit()
 
     # save object to pkl
