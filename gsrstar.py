@@ -93,7 +93,7 @@ class star:
 
         self.num_part = pd.DataFrame(np.column_stack(num_part),columns=['ra','dec','par','mu_a','mu_d']).fillna(value=0)
 
-    def set_obs_eq(self,simobs=False):
+    def set_obs_eq(self,simobs=False,rand_seed=0):
 
         self.obs_eq = obs_eq(self,simobs,self.opt)
         self.obs_eq.setup(self)
@@ -110,6 +110,7 @@ class star:
 
                 meas_err_sigma = self.opt.meas_err_sigma # in radians
                 if meas_err_sigma != 0:
+                    random.seed(rand_seed)
                     measurm_err = [random.gauss(0, meas_err_sigma) for i in self.obs_eq.auxdf.phi_obs.values]
                     self.obs_df['eta'] = self.obs_eq.auxdf.phi_obs.values + np.rad2deg(measurm_err)
                 else:
