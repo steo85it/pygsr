@@ -27,6 +27,10 @@ class star:
 
         # print("Processing star #", self.id)
 
+    def update_options(self,opt):
+        self.opt = opt
+        print("Options updated for star #",self.id)
+
     def perturb(self,sigma_pert):
 
         if debug:
