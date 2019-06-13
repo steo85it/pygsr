@@ -11,4 +11,5 @@ The astrometric model is simplified with respect to:
 
 On the other side, the attitude is modelled in a fully consistent relativistic way.
 
-Examples of how to use the code and the provided classes and methods are provided by the google colab notebook in the example/ dir as list of exercises from the Gaia Summer School 2019 (https://colab.research.google.com/drive/1chbPwxgDJmOIQ87x3Z-v3447ioSIZNSg).
+Examples of how to use the code and the provided classes and methods are provided by the google colab notebook in the example/ dir as list of exercises from the Gaia Summer School 2019.
+The full exercise is available at https://colab.research.google.com/drive/1chbPwxgDJmOIQ87x3Z-v3447ioSIZNSg (Google account required).
