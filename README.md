@@ -1,8 +1,9 @@
 # pygsr
 [![DOI](https://zenodo.org/badge/191787378.svg)](https://zenodo.org/badge/latestdoi/191787378)
 
-
 This code implements a simplified version of a Gaia-like Global Sphere Reconstruction code in Python3. Currently, it uses simulated observations provided by Alexey Butkevich, of the Pulkovo Observatory, Russia, which considers 1000 stars with an approximately uniform distribution on the celestial sphere. Observations are then generated for 5 years according to a nominal Gaia-like scanning law.
+
+WARNING: this code is in its early development stage. Please use caution when using and interpreting its results.
 
 The general goal is to give a "hands-on" overview of the main numerical and statistical properties of the global astrometric problem.
 
